@@ -1,0 +1,15 @@
+{
+    "daily_mission": {
+        "name": {
+            "zh-tw": "每日任務"
+        },
+        "description": "日常任务组队"
+    },
+    "guild_event": {
+        "name": {
+            "zh-tw": "公會活動"
+        },
+        "description": "公会集体活动"
+    }
+}
+

@@ -1,0 +1,59 @@
+# =========================
+# Secrets / environment
+# =========================
+.env
+.env.*
+!.env.example
+
+# =========================
+# Keys / certificates
+# =========================
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+
+# =========================
+# Python
+# =========================
+__pycache__/
+*.py[cod]
+*.pyo
+*.so
+
+venv/
+.venv/
+env/
+ENV/
+
+# =========================
+# Logs
+# =========================
+*.log
+logs/
+
+# =========================
+# Databases / runtime data
+# =========================
+*.db
+*.sqlite
+*.sqlite3
+
+# =========================
+# Credentials / secrets
+# =========================
+credentials.json
+service-account*.json
+secrets.json
+
+# =========================
+# IDE / OS
+# =========================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
