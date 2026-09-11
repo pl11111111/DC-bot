@@ -2,6 +2,7 @@
 import asyncio
 import logging
 import uuid
+import time
 from datetime import timezone
 from pathlib import Path
 from decimal import Decimal
@@ -39,6 +40,7 @@ class NewTrading(commands.Cog):
         self.forum_lock=asyncio.Lock()
         self.pending_forums=set()
         self.post_lock=asyncio.Lock()
+        self.cleanup_lock=asyncio.Lock()
         self.worker.start()
 
     def cog_unload(self): self.worker.cancel()
@@ -75,6 +77,7 @@ class NewTrading(commands.Cog):
             'shipped':[('确认收货','receipt'),('发起争议','dispute')],
             'receipt_confirmed':[('领取货款','collect')],
             'refund_ready':[('领取退款','collect')],
+            'payment_review':[('已付款／取消关闭，请管理员核实','keep')],
             'completed':[('保留频道并通知管理员','keep')],
             'cancelled':[('保留频道并通知管理员','keep')],
             'refunded':[('保留频道并通知管理员','keep')],
@@ -215,7 +218,7 @@ class NewTrading(commands.Cog):
                 # Lock balance rows in sorted order to serialize concurrent admission.
                 async with db.transaction() as cur:
                     for uid in sorted((buyer,seller)):
-                        await cur.execute('INSERT IGNORE INTO balances(user_id) VALUES(%s)',(uid,))
+                        await cur.execute('INSERT INTO balances(user_id) VALUES(%s) ON DUPLICATE KEY UPDATE user_id=user_id',(uid,))
                         await cur.execute('SELECT user_id FROM balances WHERE user_id=%s FOR UPDATE',(uid,))
                         await cur.fetchone()
                         await cur.execute("SELECT COUNT(*) AS n FROM orders WHERE (buyer_id=%s OR seller_id=%s) AND status NOT IN ('completed','cancelled','refunded')",(uid,uid))
@@ -257,7 +260,7 @@ class NewTrading(commands.Cog):
         sell=cfg.SELL_TAGS.get(thread.parent_id) in tags
         stored=await db.setting('forum:'+str(thread.id))
         if not buy and not sell and not stored: return
-        await db.query("INSERT IGNORE INTO tracked_channels(channel_id,kind) VALUES(%s,'forum')",(thread.id,))
+        await db.query("INSERT INTO tracked_channels(channel_id,kind) VALUES(%s,'forum') ON DUPLICATE KEY UPDATE channel_id=channel_id",(thread.id,))
         text=texts()['forum_prompt'] if buy!=sell else '请在 buy / sell 中仅保留一个标签后发起担保交易。'
         view=buttons([('购买' if sell else '出售','forum:'+str(thread.id))]) if buy!=sell else buttons([])
         if stored:
@@ -348,11 +351,13 @@ class NewTrading(commands.Cog):
         try:
             actor=inter.user.id
             if action=='keep':
-                if row['status'] not in TERMINAL: raise ValueError('仅用于保留已结束订单频道')
-                await db.query('UPDATE tracked_channels SET hold=TRUE WHERE channel_id=%s',(row['channel_id'],))
+                if row['status'] not in (*TERMINAL,'payment_review'): raise ValueError('当前步骤不支持保留频道')
+                async with self.cleanup_lock:
+                    await db.query('UPDATE tracked_channels SET hold=TRUE WHERE channel_id=%s',(row['channel_id'],))
                 await db.audit(actor,'retain_channel',{},ident)
                 await self.alert('用户请求保留交易频道：'+ident)
-                return await inter.followup.send('已请求保留，管理员将核对。',ephemeral=True)
+                await self.post(await self.order(ident),'已取消自动关闭，频道已保留，等待管理员核实。')
+                return await inter.followup.send('已取消自动关闭并通知管理员，请提供付款凭证。',ephemeral=True)
             elif action=='confirm':
                 if actor==row['initiator_id']: raise ValueError('请等待交易对方确认')
                 await self.transition(ident,'pending','confirmed',actor)
@@ -465,6 +470,31 @@ class NewTrading(commands.Cog):
             await channel.send(text,allowed_mentions=discord.AllowedMentions.none())
         log.warning(text)
 
+    async def timeout_channel(self,row):
+        """Close only the Discord channel; retain review state and payment evidence."""
+        async with self.cleanup_lock:
+            fresh=await self.order(row['id'])
+            if not fresh or fresh['status']!='payment_review': return
+            tracked=await db.query('SELECT hold FROM tracked_channels WHERE channel_id=%s',(row['channel_id'],),one=True)
+            if not tracked or tracked['hold']: return
+            deposit=await db.query('SELECT id FROM deposits WHERE order_key=%s',('new:'+row['id'],),shared=True,one=True)
+            if deposit: return
+            channel=self.bot.get_channel(row['channel_id'])
+            if not channel or channel.guild.id!=cfg.GUILD_ID: return
+            key='timeout_close:'+row['id']
+            timer=await db.setting(key)
+            if not timer:
+                await self.post(fresh,'付款已超时，请勿继续转账。频道将在约 5 分钟后关闭。\n如已付款或需要核对，请点击下方「已付款／取消关闭，请管理员核实」按钮。')
+                await channel.send(f"<@{row['buyer_id']}> <@{row['seller_id']}>，付款已超时，频道将在约 5 分钟后关闭。如已付款，请点击上方按钮取消关闭并请求管理员核实。",
+                                   allowed_mentions=discord.AllowedMentions(users=[discord.Object(id=row['buyer_id']),discord.Object(id=row['seller_id'])],roles=False,everyone=False))
+                # Start only after both notices succeed; persist across restarts.
+                await db.setting(key,{'deadline':time.time()+300})
+                await db.audit(self.bot.user.id,'timeout_close_scheduled',{'channel':channel.id,'seconds':300},row['id'])
+            elif time.time()>=timer['deadline']:
+                await db.audit(self.bot.user.id,'timeout_channel_cleanup',{'channel':channel.id},row['id'])
+                await channel.delete(reason='Payment timeout; no request to retain channel')
+                await db.query('UPDATE tracked_channels SET closed_at=UTC_TIMESTAMP() WHERE channel_id=%s',(channel.id,))
+
     @tasks.loop(seconds=60)
     async def worker(self):
         try:
@@ -502,6 +532,12 @@ class NewTrading(commands.Cog):
                                 await self.alert('收到迟到账款，请人工核对：'+row['id'])
                                 continue
                             if row['status']=='payment_review':
+                                tracked=await db.query('SELECT hold FROM tracked_channels WHERE channel_id=%s',(row['channel_id'],),one=True)
+                                if tracked and not tracked['hold']:
+                                    await db.query('UPDATE tracked_channels SET hold=TRUE WHERE channel_id=%s',(row['channel_id'],))
+                                    await db.audit(self.bot.user.id,'late_payment_hold',{},row['id'])
+                                    await self.alert('超时订单已找到到账记录，已取消频道自动关闭，请核实：'+row['id'])
+                                    await self.post(row,'已找到到账记录，自动关闭已取消，请等待管理员核实。')
                                 # Stay review-only: no automatic allocation/refund after expiry.
                                 continue
                             async with db.transaction() as cur:
@@ -514,7 +550,10 @@ class NewTrading(commands.Cog):
                             from datetime import datetime
                             if inv['expires_at']<=datetime.utcnow() and row['status']=='paying':
                                 await self.transition(row['id'],'paying','payment_review',self.bot.user.id)
-                                await self.alert('付款已超时，保留订单供迟到账核对：'+row['id'])
+                                await self.alert('付款已超时，将通知双方倒计时关闭频道；账单保留供核对：'+row['id'])
+                                await self.timeout_channel(await self.order(row['id']))
+                            elif row['status']=='payment_review':
+                                await self.timeout_channel(row)
                     else:
                         payout=await payments.reconcile(key)
                         if not payout:

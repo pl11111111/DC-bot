@@ -92,7 +92,7 @@ class NewCommunity(commands.Cog):
         for inv in invites:
             # Bot-created links have an explicit owner; do not overwrite it with bot ID.
             if inv.inviter and not inv.inviter.bot:
-                await db.query('INSERT IGNORE INTO invite_links(code,owner_id) VALUES(%s,%s)',(inv.code,inv.inviter.id))
+                await db.query('INSERT INTO invite_links(code,owner_id) VALUES(%s,%s) ON DUPLICATE KEY UPDATE code=code',(inv.code,inv.inviter.id))
         return invites
 
     @tasks.loop(minutes=10)
@@ -171,7 +171,7 @@ class NewCommunity(commands.Cog):
                 if self.invites is not None:
                     self.invites[invite.code]=invite.uses or 0
                 if invite.inviter and not invite.inviter.bot:
-                    await db.query('INSERT IGNORE INTO invite_links(code,owner_id) VALUES(%s,%s)',(invite.code,invite.inviter.id))
+                    await db.query('INSERT INTO invite_links(code,owner_id) VALUES(%s,%s) ON DUPLICATE KEY UPDATE code=code',(invite.code,invite.inviter.id))
 
     @commands.Cog.listener()
     async def on_member_update(self,before,after):

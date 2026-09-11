@@ -58,7 +58,7 @@ class NewMessageLog(commands.Cog):
                 if not isinstance(channel,discord.Thread) or channel.parent_id not in cfg.FORUM_IDS: return
                 tags={t.id for t in channel.applied_tags}
                 if cfg.BUY_TAGS.get(channel.parent_id) not in tags and cfg.SELL_TAGS.get(channel.parent_id) not in tags: return
-                await db.query("INSERT IGNORE INTO tracked_channels(channel_id,kind) VALUES(%s,'forum')",(channel.id,))
+                await db.query("INSERT INTO tracked_channels(channel_id,kind) VALUES(%s,'forum') ON DUPLICATE KEY UPDATE channel_id=channel_id",(channel.id,))
             if self.bytes>=cfg.LOG_WARN_BYTES:
                 # Leave room for edit/delete evidence; do not create new snapshots.
                 return

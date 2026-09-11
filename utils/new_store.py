@@ -56,7 +56,8 @@ async def audit(actor, action, details, order_id=None):
 
 async def setting(key, value=None):
     if value is not None:
-        await query('INSERT INTO settings(setting_key,value) VALUES(%s,%s) ON DUPLICATE KEY UPDATE value=VALUES(value)', (key, encode(value)))
+        encoded=encode(value)
+        await query('INSERT INTO settings(setting_key,value) VALUES(%s,%s) ON DUPLICATE KEY UPDATE value=%s', (key, encoded, encoded))
         return value
     row = await query('SELECT value FROM settings WHERE setting_key=%s', (key,), one=True)
     return json.loads(row['value']) if row else None
