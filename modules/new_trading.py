@@ -33,6 +33,8 @@ class NewTrading(commands.Cog):
     def __init__(self,bot):
         self.bot=bot
         self.scan_done=False
+        self.forum_lock=asyncio.Lock()
+        self.pending_forums=set()
         self.worker.start()
 
     def cog_unload(self): self.worker.cancel()
@@ -180,6 +182,12 @@ class NewTrading(commands.Cog):
     async def forum(self,thread):
         if thread.guild.id!=cfg.GUILD_ID or thread.parent_id not in cfg.FORUM_IDS:
             return
+        # Thread-create and starter-message events may arrive concurrently.
+        async with self.forum_lock:
+            await self._forum(thread)
+
+    async def _forum(self,thread):
+        self.pending_forums.discard(thread.id)
         tags={t.id for t in thread.applied_tags}
         buy=cfg.BUY_TAGS.get(thread.parent_id) in tags
         sell=cfg.SELL_TAGS.get(thread.parent_id) in tags
@@ -195,7 +203,20 @@ class NewTrading(commands.Cog):
                 return
             except discord.NotFound: pass
         if not thread.archived and not thread.locked:
-            msg=await thread.send(text,view=view)
+            try:
+                # Discord can emit THREAD_CREATE before the starter is available.
+                await thread.fetch_message(thread.id)
+            except discord.NotFound as exc:
+                if exc.code!=10008: raise
+                self.pending_forums.add(thread.id)
+                return
+            try:
+                msg=await thread.send(text,view=view)
+            except discord.Forbidden as exc:
+                if exc.code!=40058: raise  # Real permission failures must remain visible.
+                self.pending_forums.add(thread.id)
+                log.info('Waiting for forum starter message: %s',thread.id)
+                return
             await db.setting('forum:'+str(thread.id),msg.id)
 
     @commands.Cog.listener()
@@ -207,6 +228,29 @@ class NewTrading(commands.Cog):
     async def on_thread_update(self,before,after):
         if before.applied_tags!=after.applied_tags:
             await self.on_thread_create(after)
+
+    @commands.Cog.listener()
+    async def on_message(self,message):
+        if (message.guild and message.guild.id==cfg.GUILD_ID
+                and isinstance(message.channel,discord.Thread)
+                and message.channel.parent_id in cfg.FORUM_IDS
+                and message.id==message.channel.id):
+            await self.on_thread_create(message.channel)
+
+    async def retry_forums(self,guild):
+        threads={t.id:t for t in guild.threads}
+        targets=list(threads) if not self.scan_done else list(self.pending_forums)
+        self.scan_done=True
+        for ident in targets:
+            thread=threads.get(ident)
+            if thread is None:
+                self.pending_forums.discard(ident)
+                continue
+            try:
+                await self.forum(thread)
+            except Exception:
+                # A forum permissions error must not stop payment reconciliation.
+                log.exception('Forum setup failed: %s',ident)
 
     @commands.Cog.listener()
     async def on_interaction(self,inter):
@@ -351,10 +395,7 @@ class NewTrading(commands.Cog):
         try:
             guild=self.bot.get_guild(cfg.GUILD_ID)
             if not guild: return
-            if not self.scan_done:
-                for thread in guild.threads:
-                    await self.forum(thread)
-                self.scan_done=True
+            await self.retry_forums(guild)
             if not cfg.PAYMENTS_ENABLED: return
             finished=await db.query("SELECT o.* FROM orders o JOIN tracked_channels c ON c.channel_id=o.channel_id WHERE o.status IN ('completed','cancelled','refunded') AND c.hold=FALSE AND o.closed_at<UTC_TIMESTAMP()-INTERVAL 5 MINUTE")
             for done in finished:
