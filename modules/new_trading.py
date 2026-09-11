@@ -8,7 +8,7 @@ import discord
 from discord.commands import user_command
 from discord.ext import commands, tasks
 import config
-from utils import new_store as db, shared_payments as payments, binance_api
+from utils import new_store as db, shared_payments as payments, binance_api, trade_card
 from modules.new_community import buttons, admin, texts
 
 cfg=config.NEW
@@ -28,12 +28,16 @@ STEP_BANNERS={
     'completed':'receive payment.png',
 }
 
+class OrderStateChanged(ValueError):
+    pass
+
 class NewTrading(commands.Cog):
     def __init__(self,bot):
         self.bot=bot
         self.scan_done=False
         self.forum_lock=asyncio.Lock()
         self.pending_forums=set()
+        self.post_lock=asyncio.Lock()
         self.worker.start()
 
     def cog_unload(self): self.worker.cancel()
@@ -52,7 +56,7 @@ class NewTrading(commands.Cog):
     async def transition(self,ident,old,new,actor,details=None):
         async with db.transaction() as cur:
             await cur.execute('UPDATE orders SET status=%s WHERE id=%s AND status=%s',(new,ident,old))
-            if cur.rowcount!=1: raise ValueError('订单状态已改变，请使用最新交易消息')
+            if cur.rowcount!=1: raise OrderStateChanged('订单状态已改变，请使用最新交易消息')
             await cur.execute('INSERT INTO audit(actor_id,action,details,order_id) VALUES(%s,%s,%s,%s)',
                               (actor,new,db.encode(details or {'from':old}),ident))
             if new in TERMINAL:
@@ -87,24 +91,19 @@ class NewTrading(commands.Cog):
                 file=discord.File(BANNER_DIR / filename,filename='trade-step.png')
             except OSError:
                 log.exception('Trade banner unavailable: %s',filename)
-        embeds=[]
-        if file:
-            banner=discord.Embed(color=0x9854DE)
-            banner.set_image(url='attachment://trade-step.png')
-            embeds.append(banner)
-        if embed is not None:
-            embeds.append(embed)
-        if not embeds:
-            return
         try:
-            kwargs={'embeds':embeds,'allowed_mentions':discord.AllowedMentions.none()}
-            if view is not None: kwargs['view']=view
-            if file: kwargs['file']=file
-            await channel.send(**kwargs)
+            return await trade_card.send(channel,embed,view,file)
         finally:
             if file: file.close()
 
     async def post(self,row,extra=''):
+        async with self.post_lock:
+            fresh=await self.order(row['id'])
+            if not fresh: return
+            if fresh['status']!=row['status']: extra=''
+            await self._post(fresh,extra)
+
+    async def _post(self,row,extra=''):
         channel=self.bot.get_channel(row['channel_id'])
         if not channel or channel.guild.id!=cfg.GUILD_ID:
             return
@@ -114,7 +113,30 @@ class NewTrading(commands.Cog):
         embed.add_field(name='买家 / 卖家',value=f"<@{row['buyer_id']}> / <@{row['seller_id']}>")
         embed.add_field(name='商品价款 / 服务费',value=f"{row['amount']} / {row['fee']} USDT")
         embed.set_footer(text='订单 '+row['id'])
-        await self.send_step(channel,row['status'],embed,self.view(row))
+        key='trade_panel:'+row['id']
+        previous=await db.setting(key)
+        message=await self.send_step(channel,row['status'],embed,self.view(row))
+        if message:
+            await db.setting(key,{'message':message.id,'channel':channel.id})
+        if previous and previous['channel']==channel.id:
+            try:
+                old=await channel.fetch_message(previous['message'])
+                await trade_card.retire(old)
+            except discord.NotFound: pass
+            except discord.HTTPException:
+                log.warning('Could not retire prior order buttons: %s',row['id'])
+
+    async def current_step(self,inter,row):
+        """Recover UI without repeating a state change, invoice, or withdrawal."""
+        body=f"此按钮对应的步骤已结束。订单当前状态：{row['status']}。\n请使用下方当前步骤按钮。"
+        if row['status']=='paying':
+            inv=await db.query('SELECT * FROM invoices WHERE order_key=%s',('new:'+row['id'],),shared=True,one=True)
+            if inv:
+                body+=f"\n原账单到账金额：{inv['amount']} USDT\n网络：BSC / BEP20\n地址：{inv['address']}\n截止时间（UTC）：{inv['expires_at']}\n如已付款请勿重复转账；过期请联系管理员。"
+        if inter.message:
+            try: await trade_card.retire(inter.message)
+            except discord.HTTPException: pass
+        await inter.followup.send(body,view=self.view(row),ephemeral=True,allowed_mentions=discord.AllowedMentions.none())
 
     async def start(self,ctx,other,buy=True,source=None):
         guild=ctx.guild
@@ -266,6 +288,10 @@ class NewTrading(commands.Cog):
         row=await self.order(ident)
         if not row or inter.channel_id!=row['channel_id'] or inter.user.id not in (row['buyer_id'],row['seller_id']):
             return await inter.response.send_message('无权操作此订单。',ephemeral=True)
+        valid={b.custom_id.split(':')[2] for b in self.view(row).children}
+        if action not in valid:
+            await inter.response.defer(ephemeral=True)
+            return await self.current_step(inter,row)
         if action=='collect':
             payee=row['buyer_id'] if row['status']=='refund_ready' else row['seller_id']
             if inter.user.id!=payee or row['status'] not in ('receipt_confirmed','refund_ready'):
@@ -288,7 +314,7 @@ class NewTrading(commands.Cog):
                 async with db.transaction() as cur:
                     await cur.execute('SELECT * FROM orders WHERE id=%s FOR UPDATE',(ident,))
                     locked=await cur.fetchone()
-                    if locked['status']!='confirmed': raise ValueError('此订单已生成账单或状态已变化')
+                    if locked['status']!='confirmed': raise OrderStateChanged('此订单已生成账单或状态已变化')
                     await cur.execute('SELECT * FROM balances WHERE user_id=%s FOR UPDATE',(actor,))
                     balance=await cur.fetchone()
                     credit=min(balance['available'],locked['fee'])
@@ -327,6 +353,11 @@ class NewTrading(commands.Cog):
             else: return
             await self.post(await self.order(ident))
             await inter.followup.send('操作完成。',ephemeral=True)
+        except OrderStateChanged:
+            fresh=await self.order(ident)
+            if fresh: await self.current_step(inter,fresh)
+        except ValueError as exc:
+            await inter.followup.send(str(exc),ephemeral=True)
         except Exception as exc:
             log.exception('New order operation failed')
             await inter.followup.send(str(exc) if isinstance(exc,ValueError) else '操作未完成，请勿重复付款，联系管理员核对。',ephemeral=True)
