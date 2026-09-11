@@ -53,6 +53,8 @@ class InviteButtonView(discord.ui.View):
     @discord.ui.button(style=discord.ButtonStyle.primary, label="创建邀请链接", custom_id="create_invite_button")
     async def invite_button_callback(self, button, interaction):
         """当邀请按钮被点击时的回调"""
+        if not config.LEGACY_RANKING_ENABLED:
+            return
         try:
             user_id = interaction.user.id
             logger.info(f"用户 {user_id} ({interaction.user.name}) 点击了邀请按钮")
@@ -215,6 +217,8 @@ class InviteButtonView(discord.ui.View):
                 
     async def store_invite_in_background(self, user_id, invite_code):
         """后台尝试存储邀请信息，不阻塞主流程"""
+        if not config.LEGACY_RANKING_ENABLED:
+            return
         try:
             logger.info(f"开始后台存储用户 {user_id} 的邀请信息，Discord邀请码: {invite_code}")
             
@@ -356,6 +360,10 @@ class Social(commands.Cog):
             await self.bot.wait_until_ready()
             logger.info("机器人已准备就绪，开始初始化Social模块任务")
             
+            if not config.LEGACY_RANKING_ENABLED:
+                await self.sync_server_boosters()
+                return
+
             # 缓存所有服务器的邀请
             try:
                 await self.cache_invites()
@@ -443,6 +451,8 @@ class Social(commands.Cog):
 
     async def update_invitation_rankings(self):
         """后台任务：定期更新邀请排名。"""
+        if not config.LEGACY_RANKING_ENABLED:
+            return
         # 设置任务名称，便于调试
         if hasattr(asyncio.current_task(), 'set_name'):
             asyncio.current_task().set_name('invitation_rankings_task')
@@ -479,6 +489,8 @@ class Social(commands.Cog):
     
     async def update_rank_roles(self):
         """定期更新用户的邀请排名身份组。"""
+        if not config.LEGACY_RANKING_ENABLED:
+            return
         # 设置任务名称，便于调试
         if hasattr(asyncio.current_task(), 'set_name'):
             asyncio.current_task().set_name('rank_roles_task')
@@ -507,6 +519,8 @@ class Social(commands.Cog):
     
     async def update_rank_roles_once(self):
         """一次性更新用户的邀请排名身份组（不包含循环和等待）。"""
+        if not config.LEGACY_RANKING_ENABLED:
+            return
         logger.info("开始更新邀请排名身份组")
         guild = self.bot.get_guild(config.GUILD_ID)
         if not guild:
@@ -555,6 +569,8 @@ class Social(commands.Cog):
 
     async def post_invitation_rankings(self):
         """发布邀请排名到指定频道"""
+        if not config.LEGACY_RANKING_ENABLED:
+            return
         try:
             # 检查是否配置了排名频道
             if config.RANKING_CHANNEL_ID == 0:
@@ -692,6 +708,8 @@ class Social(commands.Cog):
     @commands.has_any_role(config.ADMIN_ROLE_ID, config.MODERATOR_ROLE_ID)
     async def update_ranks(self, ctx):
         """手动更新邀请排名和排名角色（仅限管理员使用）"""
+        if not config.LEGACY_RANKING_ENABLED:
+            return
         await ctx.send("正在更新邀请排名和排名角色，请稍候...")
         
         try:
@@ -707,6 +725,8 @@ class Social(commands.Cog):
     
     async def update_ranks_slash(self, ctx: ApplicationContext):
         """手动更新邀请排名（斜杠命令版本）。"""
+        if not config.LEGACY_RANKING_ENABLED:
+            return
         # 检查权限
         if not any(role.id in [config.ADMIN_ROLE_ID, config.MODERATOR_ROLE_ID] for role in ctx.author.roles):
             await ctx.respond("您没有权限执行此命令。", ephemeral=True)
@@ -729,6 +749,8 @@ class Social(commands.Cog):
     @commands.command(name="myinvites", description="查看你的邀请次数")
     async def my_invites(self, ctx):
         """查看自己的邀请次数和邀请排名"""
+        if not config.LEGACY_RANKING_ENABLED:
+            return
         try:
             user_id = ctx.author.id
             
@@ -841,6 +863,8 @@ class Social(commands.Cog):
 
     async def my_invites_slash(self, ctx: ApplicationContext):
         """查看你的邀请次数（斜杠命令版本）。"""
+        if not config.LEGACY_RANKING_ENABLED:
+            return
         try:
             # 发送初始响应
             await ctx.defer(ephemeral=True)
@@ -920,6 +944,8 @@ class Social(commands.Cog):
     @commands.Cog.listener()
     async def on_member_join(self, member):
         """当新成员加入服务器时，尝试跟踪并记录他们使用的邀请。"""
+        if not config.LEGACY_RANKING_ENABLED:
+            return
         try:
             guild = member.guild
             logger.info(f"用户 {member.name} (ID: {member.id}) 加入了服务器 {guild.name}")
@@ -1019,7 +1045,11 @@ class Social(commands.Cog):
 
     async def cache_invites(self):
         """缓存所有服务器的邀请。"""
+        if not config.LEGACY_RANKING_ENABLED:
+            return
         for guild in self.bot.guilds:
+            if guild.id != config.GUILD_ID:
+                continue
             try:
                 # 获取服务器的所有邀请
                 invites = await guild.invites()
@@ -1038,6 +1068,8 @@ class Social(commands.Cog):
     @commands.Cog.listener()
     async def on_guild_join(self, guild):
         """当机器人加入新服务器时，缓存该服务器的邀请。"""
+        if not config.LEGACY_RANKING_ENABLED:
+            return
         try:
             # 获取并缓存新服务器的邀请
             invites = await guild.invites()
@@ -1051,6 +1083,8 @@ class Social(commands.Cog):
     @commands.Cog.listener()
     async def on_invite_create(self, invite):
         """当创建新邀请时，更新缓存。"""
+        if not config.LEGACY_RANKING_ENABLED:
+            return
         try:
             # 确保服务器ID存在于缓存中
             if invite.guild.id not in self.invites_cache:
@@ -1074,7 +1108,7 @@ class Social(commands.Cog):
             before_has_verified = discord.utils.get(before.roles, id=config.VERIFIED_ROLE_ID) is not None
             after_has_verified = discord.utils.get(after.roles, id=config.VERIFIED_ROLE_ID) is not None
             
-            if not before_has_verified and after_has_verified:
+            if config.LEGACY_RANKING_ENABLED and not before_has_verified and after_has_verified:
                 logger.info(f"用户 {after.name} (ID: {after.id}) 获得了已验证身份组")
                 
                 # 更新邀请记录
@@ -1233,6 +1267,8 @@ class Social(commands.Cog):
 
     async def update_invite_leaderboard(self):
         """更新邀请排行榜。"""
+        if not config.LEGACY_RANKING_ENABLED:
+            return
         # 获取配置的频道ID
         channel_id = config.RANKING_CHANNEL_ID
         if not channel_id:
@@ -1363,6 +1399,8 @@ class Social(commands.Cog):
     @commands.Cog.listener()
     async def on_interaction(self, interaction):
         """处理按钮交互。"""
+        if not config.LEGACY_RANKING_ENABLED:
+            return
         # 检查是否是我们的自定义按钮
         if interaction.type != discord.InteractionType.component:
             return
@@ -2202,7 +2240,8 @@ def setup(bot):
         bot.add_cog(cog)
         
         # 注册斜杠命令组
-        bot.add_application_command(cog.invite_group)
+        if config.LEGACY_RANKING_ENABLED:
+            bot.add_application_command(cog.invite_group)
         
         logger.info("Social组件已加载")
     except Exception as e:

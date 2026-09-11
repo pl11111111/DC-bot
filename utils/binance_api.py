@@ -97,7 +97,7 @@ async def make_api_request(
         logger.info(f"查询字符串: {query_string}")
     
     try:
-        async with aiohttp.ClientSession() as session:
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30)) as session:
             if method == "GET":
                 async with session.get(url, params=params, headers=headers) as response:
                     response_text = await response.text()
@@ -111,7 +111,7 @@ async def make_api_request(
                     else:
                         logger.error(f"Binance API错误 ({response.status}): {response_text}")
                         logger.error(f"请求URL: {url}")
-                        logger.error(f"请求参数: {params}")
+                        logger.error('请求失败；不记录签名参数')
                         return None
             elif method == "POST":
                 async with session.post(url, params=params, headers=headers) as response:
@@ -126,12 +126,12 @@ async def make_api_request(
                     else:
                         logger.error(f"Binance API错误 ({response.status}): {response_text}")
                         logger.error(f"请求URL: {url}")
-                        logger.error(f"请求参数: {params}")
+                        logger.error('请求失败；不记录签名参数')
                         return None
     except Exception as e:
         logger.error(f"向Binance发出API请求时出错: {e}")
         logger.error(f"请求URL: {url}")
-        logger.error(f"请求参数: {params}")
+        logger.error('请求失败；不记录签名参数')
         return None
 
 async def get_deposit_address(coin: str = "USDT", network: str = "BSC", transaction_id: Optional[int] = None) -> Optional[str]:
@@ -310,6 +310,11 @@ async def release_escrow_payment(
     Returns:
         成功标志, 提现ID, 错误信息
     """
+    if config.NEW.PAYMENTS_ENABLED:
+        from utils import shared_payments
+        key = shared_payments.legacy_key(transaction_id)
+        await shared_payments.reconcile(key)
+        return await shared_payments.release(key, recipient_address, amount)
     try:
         # 地址验证 - 基本检查
         if not recipient_address or len(recipient_address) < 10:
@@ -395,6 +400,11 @@ async def check_deposit_by_amount(address: str, expected_amount: float, transact
     Returns:
         匹配金额的交易ID，如果不存在则返回None
     """
+    if config.NEW.PAYMENTS_ENABLED:
+        if transaction_id is None:
+            raise ValueError('共享收款必须关联订单')
+        from utils import shared_payments
+        return await shared_payments.find_deposit(shared_payments.legacy_key(transaction_id), address, expected_amount)
     # 获取最近的存款历史
     from datetime import datetime
     

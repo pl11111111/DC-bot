@@ -23,6 +23,14 @@ async def generate_unique_amount(base_amount: float, transaction_id: int) -> Tup
     Returns:
         Tuple[float, str]: 包含唯一金额的浮点数和格式化字符串
     """
+    import config
+    if config.NEW.PAYMENTS_ENABLED:
+        from utils import shared_payments, binance_api
+        address = await binance_api.get_deposit_address('USDT', 'BSC')
+        if not address:
+            raise ValueError('无法获取共享账户收款地址')
+        value = await shared_payments.invoice(shared_payments.legacy_key(transaction_id), address, base_amount)
+        return float(value), format(value, '.6f')
     # 设置精度为8位，确保能处理小数
     getcontext().prec = 8
     
@@ -72,5 +80,4 @@ async def generate_unique_amount(base_amount: float, transaction_id: int) -> Tup
     formatted_amount = f"{unique_amount:.6f}"
     logger.warning(f"未能生成唯一金额，使用最后一次生成的金额: {formatted_amount}")
     
-    return unique_amount, formatted_amount
-
+    raise ValueError('无法分配唯一金额，请稍后重试')

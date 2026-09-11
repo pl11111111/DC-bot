@@ -3458,5 +3458,7 @@ class Rental(commands.Cog):
             await interaction.response.send_message("发送提醒时出错，请联系管理员。", ephemeral=True)
 
 def setup(bot):
+    if not config.LEGACY_RENTAL_ENABLED:
+        return
     """加载租赁托管组件。"""
     bot.add_cog(Rental(bot)) 

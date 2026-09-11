@@ -89,19 +89,28 @@ def validate_query(query: str, params: tuple = None) -> Tuple[bool, str]:
     
     return True, ""
 
+_connection_pool = None
+_connection_pool_lock = asyncio.Lock()
+
 async def get_pool():
     """获取MySQL数据库的连接池。"""
+    global _connection_pool
+    if _connection_pool is not None:
+        return _connection_pool
     try:
-        pool = await aiomysql.create_pool(
-            host=config.MYSQL_HOST,
-            user=config.MYSQL_USER,
-            password=config.MYSQL_PASSWORD,
-            db=config.MYSQL_DATABASE,
-            charset='utf8mb4',
-            cursorclass=aiomysql.DictCursor,
-            autocommit=True
-        )
-        return pool
+        async with _connection_pool_lock:
+            if _connection_pool is None:
+                _connection_pool = await aiomysql.create_pool(
+                    host=config.MYSQL_HOST,
+                    port=config.MYSQL_PORT,
+                    user=config.MYSQL_USER,
+                    password=config.MYSQL_PASSWORD,
+                    db=config.MYSQL_DATABASE,
+                    charset='utf8mb4',
+                    cursorclass=aiomysql.DictCursor,
+                    autocommit=True
+                )
+            return _connection_pool
     except Exception as e:
         logger.error(f"创建数据库池时出错: {e}")
         raise
@@ -246,9 +255,11 @@ async def update_user_free_escrow_amount(discord_id: int, amount: float) -> int:
     query = "UPDATE users SET free_escrow_amount = %s WHERE discord_id = %s"
     return await execute_query(query, (amount, discord_id))
 
-async def set_user_active_transaction(discord_id: int, transaction_id: Optional[int]) -> int:
+async def set_user_active_transaction(discord_id: int, transaction_id: Optional[int], expected_transaction_id: Optional[int] = None) -> int:
     """设置用户的活跃交易ID。"""
     query = "UPDATE users SET active_transaction_id = %s WHERE discord_id = %s"
+    if expected_transaction_id is not None:
+        return await execute_query(query + ' AND active_transaction_id = %s', (transaction_id, discord_id, expected_transaction_id))
     return await execute_query(query, (transaction_id, discord_id))
 
 async def set_user_active_rental(discord_id: int, rental_id: Optional[int]) -> int:
@@ -606,7 +617,26 @@ async def update_transaction_status(transaction_id: int, status: str) -> int:
     
     if status not in valid_statuses:
         raise ValueError(f"无效的交易状态: {status}")
+    if status == 'cancelled' and config.NEW.PAYMENTS_ENABLED:
+        row = await get_transaction(transaction_id)
+        if row and row['transaction_type'] == 'trade':
+            from utils.shared_payments import cancel_legacy_trade
+            return await cancel_legacy_trade(transaction_id)
     
+    trade_previous = {
+        'confirmed': ('pending',), 'paying': ('confirmed',),
+        'paid': ('paying',), 'shipped': ('paid',),
+        'confirmed_receipt': ('shipped',), 'disputed': ('paid','shipped'),
+        'completed': ('confirmed_receipt',), 'cancelled': ('pending','confirmed','paying')
+    }
+    if status in trade_previous:
+        previous = trade_previous[status]
+        placeholders = ','.join(['%s'] * len(previous))
+        query = f"UPDATE transactions SET status=%s, updated_at=NOW() WHERE id=%s AND (transaction_type<>'trade' OR status IN ({placeholders}))"
+        changed = await execute_query(query, (status, transaction_id, *previous))
+        if changed != 1:
+            raise ValueError('订单状态已变化，拒绝覆盖状态')
+        return changed
     query = "UPDATE transactions SET status = %s, updated_at = NOW() WHERE id = %s"
     return await execute_query(query, (status, transaction_id))
 
@@ -655,15 +685,19 @@ async def update_transaction_payment(
         SET {', '.join(set_clauses)}
         WHERE id = %s
     """
-    
-    return await execute_query(query, tuple(params))
+    if txid:
+        query += " AND (transaction_type <> 'trade' OR status = 'paying')"
+    changed = await execute_query(query, tuple(params))
+    if txid and changed != 1:
+        raise ValueError('订单状态已改变；到账记录需核对，禁止覆盖订单')
+    return changed
 
 async def complete_transaction(transaction_id: int) -> int:
     """标记交易为已完成。"""
     query = """
         UPDATE transactions 
         SET status = 'completed', completed_at = CURRENT_TIMESTAMP 
-        WHERE id = %s
+        WHERE id = %s AND (transaction_type <> 'trade' OR status = 'confirmed_receipt')
     """
     return await execute_query(query, (transaction_id,))
 

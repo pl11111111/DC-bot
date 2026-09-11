@@ -10,6 +10,7 @@ import time
 
 import config
 from utils import database, redis_client, helpers, binance_api, payment_utils
+from utils.legacy_safety import serialized
 
 # 配置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -161,16 +162,18 @@ class Trading(commands.Cog):
             return
             
         # 检查是否是交易类型（而非租赁）
+        if transaction['status'] not in ('pending', 'confirmed'):
+            await database.log_transaction_action(transaction_id, 'admin_close_blocked', ctx.author.id, '订单可能涉及资金，禁止直接标记取消')
+            await ctx.respond('此订单已进入资金流程，不能直接关闭。请先核对入款、退款或放款结果。', ephemeral=True)
+            return
         if transaction["transaction_type"] != "trade":
             await ctx.respond("此频道是租赁频道，请使用 `/rental_admin close_channel` 命令关闭。", ephemeral=True)
             return
             
-        # 清除用户的活跃交易
-        await database.set_user_active_transaction(transaction["buyer_id"], None)
-        await database.set_user_active_transaction(transaction["seller_id"], None)
-        
         # 更新交易状态为已取消
         await database.update_transaction_status(transaction_id, "cancelled")
+        await database.set_user_active_transaction(transaction["buyer_id"], None, transaction_id)
+        await database.set_user_active_transaction(transaction["seller_id"], None, transaction_id)
         
         # 记录操作
         await database.log_transaction_action(
@@ -209,6 +212,11 @@ class Trading(commands.Cog):
     # 用户命令（右键点击用户）
     @user_command(name="开始交易(buy)")
     async def trade_callback(self, ctx: ApplicationContext, user: discord.User):
+        if ctx.guild and ctx.guild.id == config.NEW.GUILD_ID:
+            cog = self.bot.get_cog('NewTrading')
+            if not cog:
+                return await ctx.respond('新社群交易模块未启用。', ephemeral=True)
+            return await cog.start(ctx, user, buy=True)
         """发起与其他用户的交易（作为买家）。"""
         # 检查是否为同一用户
         if ctx.author.id == user.id:
@@ -402,6 +410,11 @@ class Trading(commands.Cog):
     
     @user_command(name="开始交易(sell)")
     async def trade_sell_callback(self, ctx: ApplicationContext, user: discord.User):
+        if ctx.guild and ctx.guild.id == config.NEW.GUILD_ID:
+            cog = self.bot.get_cog('NewTrading')
+            if not cog:
+                return await ctx.respond('新社群交易模块未启用。', ephemeral=True)
+            return await cog.start(ctx, user, buy=False)
         """发起与其他用户的交易（作为卖家）。"""
         # 检查是否为同一用户
         if ctx.author.id == user.id:
@@ -896,6 +909,7 @@ class Trading(commands.Cog):
                 
                 await interaction.response.send_message(embed=embed, ephemeral=True)
     
+    @serialized
     async def confirm_trade(self, interaction: discord.Interaction, transaction: Dict):
         """卖家确认交易。"""
         if transaction["status"] != "pending":
@@ -953,6 +967,7 @@ class Trading(commands.Cog):
             view=view
         )
     
+    @serialized
     async def reject_trade(self, interaction: discord.Interaction, transaction: Dict):
         """卖家拒绝交易。"""
         if transaction["status"] != "pending":
@@ -963,8 +978,8 @@ class Trading(commands.Cog):
         await database.update_transaction_status(transaction["id"], "cancelled")
         
         # 清除双方的活跃交易
-        await database.set_user_active_transaction(transaction["buyer_id"], None)
-        await database.set_user_active_transaction(transaction["seller_id"], None)
+        await database.set_user_active_transaction(transaction["buyer_id"], None, transaction['id'])
+        await database.set_user_active_transaction(transaction["seller_id"], None, transaction['id'])
         
         # 记录操作
         await database.log_transaction_action(
@@ -997,8 +1012,16 @@ class Trading(commands.Cog):
         await asyncio.sleep(30)
         await interaction.channel.delete()
     
+    @serialized
     async def process_trade_payment(self, ctx, transaction: Dict):
         """处理交易支付。"""
+        transaction = await database.get_transaction(transaction['id'])
+        if not transaction or transaction['status'] != 'confirmed':
+            if isinstance(ctx, discord.Interaction):
+                await ctx.response.send_message('订单状态已变化，不能再次生成账单。', ephemeral=True)
+            else:
+                await ctx.respond('订单状态已变化，不能再次生成账单。', ephemeral=True)
+            return
         # 如果是交互对象，延迟响应
         if isinstance(ctx, discord.Interaction):
             try:
@@ -1037,7 +1060,7 @@ class Trading(commands.Cog):
             actual_escrow_fee = escrow_fee
             
             if user and "free_escrow_amount" in user and user["free_escrow_amount"] > 0:
-                free_escrow_amount = user["free_escrow_amount"]
+                free_escrow_amount = float(user["free_escrow_amount"])
                 
                 if free_escrow_amount >= escrow_fee:
                     # 用户有足够的免费托管积分
@@ -1048,6 +1071,12 @@ class Trading(commands.Cog):
                     actual_escrow_fee = escrow_fee - free_escrow_amount
             
             # 计算实际需要支付的总金额（考虑免费托管积分）
+            if config.NEW.PAYMENTS_ENABLED:
+                from utils import shared_payments
+                reserved = await shared_payments.reserve_legacy_credits(transaction['id'], transaction['buyer_id'], escrow_fee)
+                free_escrow_amount = float(reserved)
+                actual_escrow_fee = escrow_fee - free_escrow_amount
+                has_free_escrow = actual_escrow_fee == 0
             total_amount = float(transaction["amount"]) + actual_escrow_fee
             
             # 生成支付地址
@@ -1247,13 +1276,14 @@ class Trading(commands.Cog):
                 
                 # 如果有txid，检查是否已确认
                 if transaction.get("txid"):
-                    is_confirmed = await binance_api.is_transaction_confirmed(transaction["txid"])
+                    is_confirmed = config.NEW.PAYMENTS_ENABLED or await binance_api.is_transaction_confirmed(transaction["txid"])
                     logger.info(f"交易 {transaction_id} txid: {transaction['txid']} 确认状态: {'已确认' if is_confirmed else '未确认'}")
                     
                     if is_confirmed:
                         # 更新交易状态
                         prev_status = transaction["status"]
-                        await database.update_transaction_status(transaction_id, "paid")
+                        if prev_status != 'paid':
+                            await database.update_transaction_status(transaction_id, "paid")
                         logger.info(f"已将交易 {transaction_id} 状态从 {prev_status} 更新为 paid")
                         
                         # 记录操作
@@ -1268,7 +1298,7 @@ class Trading(commands.Cog):
                         user = await database.get_user(transaction["buyer_id"])
                         escrow_fee = transaction["escrow_fee"]
                         
-                        if user and "free_escrow_amount" in user and user["free_escrow_amount"] > 0:
+                        if not config.NEW.PAYMENTS_ENABLED and user and "free_escrow_amount" in user and user["free_escrow_amount"] > 0:
                             free_escrow_amount = user["free_escrow_amount"]
                             
                             if free_escrow_amount >= escrow_fee:
@@ -1364,14 +1394,21 @@ class Trading(commands.Cog):
             logger.info(f"清理交易 {transaction_id} 的支付检查任务")
             self.payment_check_tasks.pop(transaction_id, None)
     
+    @serialized
     async def handle_payment_timeout(self, transaction: Dict, channel: discord.TextChannel):
         """处理支付超时的情况。"""
+        if transaction['status'] != 'paying':
+            return
+        if config.NEW.PAYMENTS_ENABLED:
+            await database.log_transaction_action(transaction['id'], 'payment_review', transaction['buyer_id'], '支付超时，保留频道和订单供迟到账核对')
+            await channel.send('付款时间已到，请勿继续付款。订单和频道已保留，请联系管理员核对迟到账款。')
+            return
         # 更新交易状态
         await database.update_transaction_status(transaction["id"], "cancelled")
         
         # 清除双方的活跃交易
-        await database.set_user_active_transaction(transaction["buyer_id"], None)
-        await database.set_user_active_transaction(transaction["seller_id"], None)
+        await database.set_user_active_transaction(transaction["buyer_id"], None, transaction['id'])
+        await database.set_user_active_transaction(transaction["seller_id"], None, transaction['id'])
         
         # 记录操作
         await database.log_transaction_action(
@@ -1404,6 +1441,7 @@ class Trading(commands.Cog):
         await asyncio.sleep(30)
         await channel.delete()
     
+    @serialized
     async def mark_shipped(self, interaction: discord.Interaction, transaction: Dict):
         """卖家标记物品为已发货。"""
         if transaction["status"] != "paid":
@@ -1517,6 +1555,7 @@ class Trading(commands.Cog):
             ephemeral=True
         )
     
+    @serialized
     async def open_dispute(self, interaction: discord.Interaction, transaction: Dict):
         """开启交易争议。"""
         if transaction["status"] not in ["paid", "shipped"]:
@@ -1568,6 +1607,7 @@ class Trading(commands.Cog):
             embed=embed
         )
     
+    @serialized
     async def cancel_trade(self, interaction: discord.Interaction, transaction: Dict):
         """取消交易。"""
         # 卖家不能在买家点击支付后取消交易
@@ -1586,8 +1626,8 @@ class Trading(commands.Cog):
         await database.update_transaction_status(transaction["id"], "cancelled")
         
         # 清除双方的活跃交易
-        await database.set_user_active_transaction(transaction["buyer_id"], None)
-        await database.set_user_active_transaction(transaction["seller_id"], None)
+        await database.set_user_active_transaction(transaction["buyer_id"], None, transaction['id'])
+        await database.set_user_active_transaction(transaction["seller_id"], None, transaction['id'])
         
         # 记录操作
         await database.log_transaction_action(
@@ -1721,6 +1761,7 @@ class Trading(commands.Cog):
             # 确保任务引用被清理
             self.payment_check_tasks.pop(transaction_id, None)
 
+    @serialized
     async def handle_address_confirmation(self, interaction: discord.Interaction, transaction_id: int, address: str):
         """处理卖家确认收款地址。"""
         # 获取交易信息
@@ -1795,11 +1836,11 @@ class Trading(commands.Cog):
                 return
                 
             # 更新交易状态
-            await database.update_transaction_status(transaction_id, "completed")
+            await database.complete_transaction(transaction_id)
             
             # 清除双方的活跃交易
-            await database.set_user_active_transaction(transaction["buyer_id"], None)
-            await database.set_user_active_transaction(transaction["seller_id"], None)
+            await database.set_user_active_transaction(transaction["buyer_id"], None, transaction['id'])
+            await database.set_user_active_transaction(transaction["seller_id"], None, transaction['id'])
             
             # 清除等待收款地址的缓存
             await redis_client.clear_waiting_for_seller_address(transaction_id)
@@ -1886,6 +1927,7 @@ class Trading(commands.Cog):
             f"<@{interaction.user.id}>，请重新输入您的USDT-BEP20收款地址。"
         )
 
+    @serialized
     async def handle_confirm_receipt_final(self, interaction: discord.Interaction, transaction_id: int):
         """处理买家最终确认收货。"""
         # 获取交易信息
@@ -2285,6 +2327,7 @@ class Trading(commands.Cog):
         except Exception as e:
             logger.error(f"计划删除频道 {channel.id} 时出错: {e}", exc_info=True)
 
+    @serialized
     async def buyer_cancel_trade(self, interaction: discord.Interaction, transaction: Dict):
         """买家取消自己的交易请求。"""
         if transaction["status"] != "pending":
@@ -2295,8 +2338,8 @@ class Trading(commands.Cog):
         await database.update_transaction_status(transaction["id"], "cancelled")
         
         # 清除双方的活跃交易
-        await database.set_user_active_transaction(transaction["buyer_id"], None)
-        await database.set_user_active_transaction(transaction["seller_id"], None)
+        await database.set_user_active_transaction(transaction["buyer_id"], None, transaction['id'])
+        await database.set_user_active_transaction(transaction["seller_id"], None, transaction['id'])
         
         # 记录操作
         await database.log_transaction_action(
@@ -2330,5 +2373,7 @@ class Trading(commands.Cog):
         await interaction.channel.delete()
 
 def setup(bot):
+    if not config.LEGACY_TRADING_ENABLED:
+        return
     """加载交易托管组件。"""
     bot.add_cog(Trading(bot)) 

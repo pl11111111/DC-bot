@@ -6,6 +6,7 @@ import asyncio
 from typing import List, Optional
 
 import config
+from utils.guild_isolation import IsolatedBot, command_allowed
 
 # 自定义日志过滤器，过滤掉高频且不重要的日志
 class LogFilter(logging.Filter):
@@ -37,7 +38,7 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler("bot.log", encoding='utf-8'),
+        logging.FileHandler("bot.log", encoding='utf-8', delay=True),
         logging.StreamHandler()
     ]
 )
@@ -55,17 +56,22 @@ intents.message_content = True  # 需要消息内容权限来处理命令
 intents.voice_states = True  # 需要语音状态权限来处理语音频道的操作
 
 # 创建机器人实例 (使用py-cord)
-bot = commands.Bot(command_prefix="!", intents=intents)
+bot = IsolatedBot(command_prefix="!", intents=intents)
+bot.add_check(command_allowed)
 
 # 加载组件
 COGS_TO_LOAD = [
-    "modules.trading",
-    "modules.rental",
     "modules.social",
     "modules.admin",
     "modules.giveaway",
     "modules.market",
     "modules.party"
+    ,"modules.new_community"
+    ,"modules.new_trading"
+    ,"modules.new_message_log"
+    ,"modules.new_moderation"
+    ,"modules.new_voice"
+    ,"modules.new_trade_stats"
 ]
 
 @bot.event
@@ -105,6 +111,8 @@ async def on_ready():
 @bot.event
 async def on_guild_join(guild):
     """机器人加入新服务器时触发的事件。"""
+    if guild.id != config.GUILD_ID:
+        return  # New guild panels are managed by the dedicated modules.
     logger.info(f"加入新服务器: {guild.name} (ID: {guild.id})")
     
     # 查找或创建交易和租赁频道的分类
@@ -121,7 +129,7 @@ async def on_guild_join(guild):
             voice_category = category
     
     # 如果分类不存在则创建
-    if not trading_category:
+    if config.LEGACY_TRADING_ENABLED and not trading_category:
         logger.info(f"在 {guild.name} 中创建交易分类")
         try:
             trading_category = await guild.create_category("Trading")
@@ -134,7 +142,7 @@ async def on_guild_join(guild):
         except Exception as e:
             logger.error(f"创建交易分类时出错: {e}")
     
-    if not rental_category:
+    if config.LEGACY_RENTAL_ENABLED and not rental_category:
         logger.info(f"在 {guild.name} 中创建租赁分类")
         try:
             rental_category = await guild.create_category("Rentals")
@@ -162,7 +170,7 @@ async def on_guild_join(guild):
     
     # 如果邀请频道不存在则创建
     invitation_channel = discord.utils.get(guild.text_channels, name="invitations")
-    if not invitation_channel:
+    if config.LEGACY_RANKING_ENABLED and not invitation_channel:
         logger.info(f"在 {guild.name} 中创建 #invitations 频道")
         try:
             invitation_channel = await guild.create_text_channel("invitations")
@@ -182,7 +190,7 @@ async def on_guild_join(guild):
     
     # 如果排名频道不存在则创建
     ranking_channel = discord.utils.get(guild.text_channels, name="top-inviters")
-    if not ranking_channel:
+    if config.LEGACY_RANKING_ENABLED and not ranking_channel:
         logger.info(f"在 {guild.name} 中创建 #top-inviters 频道")
         try:
             ranking_channel = await guild.create_text_channel("top-inviters")
@@ -315,7 +323,7 @@ def run_bot():
             logger.info(f"检查组件 {cog_name} 的任务状态")
             
             # 检查social模块的任务
-            if cog_name == "Social":
+            if cog_name == "Social" and config.LEGACY_RANKING_ENABLED:
                 if hasattr(cog, 'ranking_task'):
                     status = "运行中" if cog.ranking_task and not cog.ranking_task.done() else "未运行"
                     logger.info(f"- 邀请排名任务: {status}")
@@ -401,7 +409,7 @@ def run_bot():
         
         all_good = True
         for cog_name, cog in bot.cogs.items():
-            if cog_name == "Social":
+            if cog_name == "Social" and config.LEGACY_RANKING_ENABLED:
                 if hasattr(cog, 'ranking_task'):
                     status = "运行中" if cog.ranking_task and not cog.ranking_task.done() else "未运行"
                     logger.info(f"- 邀请排名任务: {status}")

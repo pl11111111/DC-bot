@@ -4,12 +4,21 @@ from dotenv import load_dotenv
 # 从.env文件加载环境变量
 load_dotenv()
 
+# New guild settings are namespaced; all existing settings below stay unchanged.
+from utils import new_config as NEW
+
+# Retired guild features: intentionally not controlled by stale server .env values.
+LEGACY_TRADING_ENABLED = False
+LEGACY_RENTAL_ENABLED = False
+LEGACY_RANKING_ENABLED = False
+
 # Discord机器人配置
 DISCORD_TOKEN = os.getenv('DISCORD_TOKEN')
 GUILD_ID = int(os.getenv('GUILD_ID', '0'))
 
 # 数据库配置
 MYSQL_HOST = os.getenv('MYSQL_HOST', 'localhost')
+MYSQL_PORT = int(os.getenv('MYSQL_PORT', '3306'))
 MYSQL_USER = os.getenv('MYSQL_USER', 'root')
 MYSQL_PASSWORD = os.getenv('MYSQL_PASSWORD', '')
 MYSQL_DATABASE = os.getenv('MYSQL_DATABASE', 'trade_bot')
