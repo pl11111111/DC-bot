@@ -2,6 +2,7 @@
 import asyncio
 import logging
 import uuid
+from datetime import timezone
 from pathlib import Path
 from decimal import Decimal
 import discord
@@ -68,9 +69,9 @@ class NewTrading(commands.Cog):
     def view(self,row):
         ident=row['id']
         options={
-            'pending':[('确认交易','confirm'),('取消','cancel')],
-            'confirmed':[('获取付款信息','pay'),('取消','cancel')],
-            'paid':[('已发货','ship'),('发起争议','dispute')],
+            'pending':[('确认交易','confirm'),('取消交易','cancel')],
+            'confirmed':[('获取付款信息','pay'),('取消交易','cancel')],
+            'paid':[('标记为已发货','ship'),('发起争议','dispute')],
             'shipped':[('确认收货','receipt'),('发起争议','dispute')],
             'receipt_confirmed':[('领取货款','collect')],
             'refund_ready':[('领取退款','collect')],
@@ -103,16 +104,62 @@ class NewTrading(commands.Cog):
             if fresh['status']!=row['status']: extra=''
             await self._post(fresh,extra)
 
+    def order_embed(self,row,extra=''):
+        """Legacy message fields with the new ledger's amounts and workflow."""
+        buyer=f"<@{row['buyer_id']}>"
+        seller=f"<@{row['seller_id']}>"
+        counterpart=seller if row.get('initiator_id')==row['buyer_id'] else buyer
+        stages={
+            'pending':('交易请求',f'{counterpart}，请查看物品及附加详情，确认无误后点击「确认交易」。'),
+            'confirmed':('交易已确认',f'{buyer}，交易已被确认。请点击「获取付款信息」继续支付。'),
+            'invoicing':('正在生成付款信息','请等待系统生成账单，请勿提前转账。'),
+            'paying':('等待买家付款',f'{buyer}，请按本订单付款信息转账；已付款请等待系统确认，勿重复支付。'),
+            'paid':('支付已确认',f'{seller}，系统已确认买家付款。请交付物品，完成后点击「标记为已发货」。'),
+            'shipped':('卖家已发货',f'{buyer}，卖家已发货。收到物品并核对无误后，请点击「确认收货」。如有问题，请发起争议。'),
+            'receipt_confirmed':('买家已确认收货',f'{seller}，买家已确认收到物品。请点击「领取货款」提供收款地址。'),
+            'releasing':('正在释放资金','收款申请已提交处理，请等待系统核对结果，勿重复申请。'),
+            'completed':('交易已完成','买家已确认收货，系统已确认货款转出成功。感谢使用担保交易！'),
+            'cancelled':('交易已取消','本订单已取消，请勿继续付款或发货。'),
+            'disputed':('交易争议处理中',f'{buyer} {seller}，请保留相关证据，在此等待管理员处理。'),
+            'payment_review':('付款待核对','请勿继续付款或发货，请联系管理员核对账款。'),
+            'refund_ready':('等待领取退款',f'{buyer}，退款已获准，请点击「领取退款」核对退款金额并提供收款地址。'),
+            'releasing_refund':('正在处理退款','退款申请已提交处理，请等待系统核对结果，勿重复申请。'),
+            'refunded':('退款已完成','系统已确认退款转出成功。'),
+        }
+        title,notice=stages.get(row['status'],('交易待核对','请联系管理员确认当前进度。'))
+        embed=discord.Embed(title=title,description=notice,color=0x9854DE)
+        def amount(value):
+            text=format(Decimal(str(value)), 'f')
+            return text.rstrip('0').rstrip('.') if '.' in text else text
+        price=Decimal(str(row['amount']))
+        fee=Decimal(str(row['fee']))
+        credits=Decimal(str(row.get('credits',0)))
+        for name,value in [('📦 物品',row['item']),('💰 价格',amount(price)+' USDT'),
+                           ('🔒 托管费',amount(fee)+' USDT')]:
+            embed.add_field(name=name,value=value,inline=False)
+        if credits:
+            embed.add_field(name='🎟️ 积分抵扣',value=amount(credits)+' USDT',inline=False)
+        embed.add_field(name='💵 订单合计',value=amount(price+fee-credits)+' USDT\n付款时请以系统账单的实际到账金额为准（包含识别尾数）。',inline=False)
+        embed.add_field(name='🛒 买家',value=buyer,inline=False)
+        embed.add_field(name='🏪 卖家',value=seller,inline=False)
+        if row.get('terms'):
+            embed.add_field(name='附加详情',value=row['terms'],inline=False)
+        created=row.get('created_at')
+        if created:
+            if created.tzinfo is None: created=created.replace(tzinfo=timezone.utc)
+            embed.add_field(name='🕒 创建时间',value=f'<t:{int(created.timestamp())}:F>',inline=False)
+        if extra:
+            embed.add_field(name='交易提示',value=extra,inline=False)
+        embed.set_footer(text='订单 '+row['id'])
+        return embed
+
     async def _post(self,row,extra=''):
         channel=self.bot.get_channel(row['channel_id'])
         if not channel or channel.guild.id!=cfg.GUILD_ID:
             return
         if row['status'] in TERMINAL:
             extra+='\n频道将在约 5 分钟后清理。如需保留，请点击下方按钮。'
-        embed=discord.Embed(title='担保交易',description=f"商品：{row['item']}\n约定：{row['terms']}\n\n状态：{row['status']}\n{extra}",color=0x9854DE)
-        embed.add_field(name='买家 / 卖家',value=f"<@{row['buyer_id']}> / <@{row['seller_id']}>")
-        embed.add_field(name='商品价款 / 服务费',value=f"{row['amount']} / {row['fee']} USDT")
-        embed.set_footer(text='订单 '+row['id'])
+        embed=self.order_embed(row,extra)
         key='trade_panel:'+row['id']
         previous=await db.setting(key)
         message=await self.send_step(channel,row['status'],embed,self.view(row))
