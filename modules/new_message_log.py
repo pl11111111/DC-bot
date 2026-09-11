@@ -210,7 +210,7 @@ class NewMessageLog(commands.Cog):
         active=await db.query("SELECT id FROM orders WHERE (channel_id=%s OR source_id=%s) AND status NOT IN ('completed','cancelled','refunded')",(cid,cid))
         if active: return await ctx.respond('仍有未结束订单，不能解除证据保留。',ephemeral=True)
         view=discord.ui.View(timeout=180)
-        button=discord.ui.Button(label='确认结案并恢复到期清理',style=discord.ButtonStyle.danger)
+        button=discord.ui.Button(label='确认结案并恢复到期清理',emoji='🧹',style=discord.ButtonStyle.danger)
         async def confirm(inter):
             if inter.user.id!=ctx.author.id or not admin(inter.user,cfg.TRADE_ADMIN_ROLES): return
             await inter.response.defer(ephemeral=True)

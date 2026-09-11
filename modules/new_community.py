@@ -17,7 +17,16 @@ def texts():
 def buttons(items):
     view = discord.ui.View(timeout=None)
     for label, custom in items:
-        view.add_item(discord.ui.Button(label=label,custom_id='new:'+custom,style=discord.ButtonStyle.secondary))
+        kind=custom.split(':',1)[0]
+        if kind=='trade':
+            action=custom.split(':',2)[1]
+            emoji={'confirm':'✅','cancel':'❌','pay':'💳','ship':'📦',
+                   'receipt':'✅','collect':'💰','dispute':'⚠️','keep':'📌'}.get(action)
+        else:
+            emoji={'verify':'✅','lang':'🌐','invites':'👥','invite_link':'📨','forum':'🛒'}.get(kind)
+            if custom=='lang:clear': emoji='🔄'
+            if kind=='forum': emoji='💵' if label=='出售' else '🛒'
+        view.add_item(discord.ui.Button(label=label,emoji=emoji,custom_id='new:'+custom,style=discord.ButtonStyle.secondary))
     return view
 
 def admin(member, roles):
@@ -257,7 +266,7 @@ class NewCommunity(commands.Cog):
             try:
                 render=embeds(title.value,body.value,banner.value or texts().get('banners',{}).get(str(channel.id)))
                 view=discord.ui.View(timeout=300)
-                publish=discord.ui.Button(label='确认发布 / 保存修改',style=discord.ButtonStyle.success)
+                publish=discord.ui.Button(label='确认发布 / 保存修改',emoji='📣',style=discord.ButtonStyle.success)
                 used=False
                 async def confirmed(click):
                     nonlocal used

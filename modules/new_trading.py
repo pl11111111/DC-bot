@@ -15,11 +15,10 @@ cfg=config.NEW
 log=logging.getLogger(__name__)
 TERMINAL=('completed','cancelled','refunded')
 BANNER_DIR=Path(__file__).resolve().parents[1] / 'png'
-# Highlight the next action, rather than the action that just finished.
+# Match the named workflow stage; creating an order renders only its first banner.
 STEP_BANNERS={
-    'created':'initiate trade.png',
-    'pending':'confirm order.png',
-    'confirmed':'verify payment.png',
+    'pending':'initiate trade.png',
+    'confirmed':'confirm order.png',
     'invoicing':'verify payment.png',
     'paying':'verify payment.png',
     'paid':'ship item.png',
@@ -166,7 +165,6 @@ class NewTrading(commands.Cog):
                     await self.transition(ident,'pending','cancelled',user.id,{'reason':'channel creation/setup failed'})
                     raise
                 await db.audit(user.id,'create',{'terms':terms.value,'source':source},ident)
-                await self.send_step(channel,'created')
                 await self.post(await self.order(ident),texts()['payment_notice'])
                 await inter.followup.send(f'交易已创建：{channel.mention}',ephemeral=True)
             except Exception as exc:
@@ -298,6 +296,8 @@ class NewTrading(commands.Cog):
                     await cur.execute("UPDATE orders SET credits=%s,status='invoicing' WHERE id=%s",(credit,ident))
                 # A durable intermediate state lets the worker recover failures.
                 await self.prepare_invoice(await self.order(ident))
+                # prepare_invoice already posts the payment banner and full instructions.
+                return await inter.followup.send('付款信息已生成，请查看交易频道。',ephemeral=True)
             elif action=='cancel':
                 if row['status'] not in ('pending','confirmed'): raise ValueError('已生成账单，不能直接取消；请联系管理员')
                 await self.transition(ident,row['status'],'cancelled',actor)
@@ -308,7 +308,7 @@ class NewTrading(commands.Cog):
                 if actor!=row['buyer_id']: raise ValueError('只有买家可以确认收货')
                 # Require a second explicit confirmation, bound to the buyer and order.
                 view=discord.ui.View(timeout=180)
-                button=discord.ui.Button(label='确认已收到商品，允许卖家收款',style=discord.ButtonStyle.danger)
+                button=discord.ui.Button(label='确认已收到商品，允许卖家收款',emoji='✅',style=discord.ButtonStyle.danger)
                 async def confirm(click):
                     if click.user.id!=row['buyer_id']: return
                     await click.response.defer(ephemeral=True)
@@ -357,7 +357,7 @@ class NewTrading(commands.Cog):
             try:
                 fee,net=await payments.payout_quote(address.value.strip(),gross)
                 view=discord.ui.View(timeout=180)
-                button=discord.ui.Button(label='确认地址与预计费用，申请放款',style=discord.ButtonStyle.danger)
+                button=discord.ui.Button(label='确认地址与预计费用，申请放款',emoji='💰',style=discord.ButtonStyle.danger)
                 async def accepted(confirm):
                     if confirm.user.id!=payee: return
                     await confirm.response.defer(ephemeral=True)
@@ -473,7 +473,7 @@ class NewTrading(commands.Cog):
             await db.audit(ctx.author.id,'review_decision',{'decision':decision,'reason':reason,'status':row['status']},order_id)
             return await ctx.respond('意见已保存。',ephemeral=True)
         view=discord.ui.View(timeout=180)
-        button=discord.ui.Button(label='确认处理此订单',style=discord.ButtonStyle.danger)
+        button=discord.ui.Button(label='确认处理此订单',emoji='⚖️',style=discord.ButtonStyle.danger)
         async def accepted(inter):
             if inter.user.id!=ctx.author.id or not admin(inter.user,cfg.TRADE_ADMIN_ROLES): return
             await inter.response.defer(ephemeral=True)
