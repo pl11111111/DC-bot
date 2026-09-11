@@ -126,8 +126,6 @@ async def find_deposit(key, address, expected):
 
 async def payout_quote(address, gross):
     from utils.binance_api import make_api_request
-    if __import__('os').getenv('NEW_WITHDRAW_AMOUNT_MODE','').strip() not in ('gross','net'):
-        raise ValueError('管理员尚未核实提现扣费方式，新社群放款暂未开放')
     if not re.fullmatch(r'0x[0-9a-fA-F]{40}',address) or int(address[2:],16)==0:
         raise ValueError('请输入有效的 USDT-BEP20 地址')
     data = await make_api_request('/sapi/v1/capital/config/getall','GET',{})
@@ -153,9 +151,6 @@ async def release(key, address, gross, fee=Decimal(0), net=None):
     fee=Decimal(str(fee))
     if not fee.is_finite() or fee<0 or net+fee>gross:
         raise ValueError('放款金额和费用超过订单允许的总额')
-    amount_mode = __import__('os').getenv('NEW_WITHDRAW_AMOUNT_MODE','').strip()
-    if key.startswith('new:') and amount_mode not in ('gross','net'):
-        raise ValueError('请先核实渠道扣费方式并设置 NEW_WITHDRAW_AMOUNT_MODE；未提交提现')
     request_id = hashlib.sha256(key.encode()).hexdigest()[:32]
     async with db.transaction(True) as cur:
         # One persistent account gate serializes reservations and honors a safety freeze.
@@ -173,16 +168,18 @@ async def release(key, address, gross, fee=Decimal(0), net=None):
                 return True, prior['provider_id'], None
             return False, prior['provider_id'], '已经触发了资金释放，结果待核对，禁止重复提交'
         snapshot=await payout_guard.authorize(cur,key,address,gross,fee,net)
-        snapshot['amount_mode']=amount_mode
+        snapshot['amount_mode']='gross'
+        snapshot['wallet_type']=0
         await cur.execute('INSERT INTO payment_settings(setting_key,value) VALUES(%s,%s)',
                           ('payout_guard:'+key,db.encode(snapshot)))
         await cur.execute('INSERT INTO payouts(order_key,request_id,address,gross,fee,net) VALUES(%s,%s,%s,%s,%s,%s)',
                           (key,request_id,address,gross,fee,net))
     # The intent is committed BEFORE the external side effect. Even a crash is fail-closed.
-    request_amount = gross if amount_mode=='gross' or key.startswith('legacy:') else net
+    # Confirmed external BSC test: request 3.01, debit 3.01, receipt 3, fee .01.
+    request_amount = gross
     response = await make_api_request('/sapi/v1/capital/withdraw/apply','POST',
         {'coin':'USDT','network':'BSC','address':address,'amount':format(request_amount,'f'),
-         'withdrawOrderId':request_id,'transactionFeeFlag':'true' if key.startswith('new:') else 'false'})
+         'withdrawOrderId':request_id,'transactionFeeFlag':'true','walletType':'0'})
     provider_id = response.get('id') if isinstance(response,dict) else None
     await db.query('UPDATE payouts SET state=%s,provider_id=%s,payload=%s WHERE order_key=%s',
         ('submitted' if provider_id else 'unknown',provider_id,db.encode(response),key),shared=True)

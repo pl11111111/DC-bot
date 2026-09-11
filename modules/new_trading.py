@@ -125,9 +125,6 @@ class NewTrading(commands.Cog):
         if not cfg.PAYMENTS_ENABLED:
             msg='共享支付账本尚未启用，请管理员完成迁移与检查后开放交易。'
             return await ctx.respond(msg,ephemeral=True) if hasattr(ctx,'respond') else await ctx.response.send_message(msg,ephemeral=True)
-        if __import__('os').getenv('NEW_WITHDRAW_AMOUNT_MODE','') not in ('gross','net'):
-            msg='管理员尚未核实提现扣费方式，新社群暂不接收新交易。'
-            return await ctx.respond(msg,ephemeral=True) if hasattr(ctx,'respond') else await ctx.response.send_message(msg,ephemeral=True)
         modal=discord.ui.Modal(title='担保交易条件')
         item=discord.ui.InputText(label='商品名称及数量',max_length=150)
         amount=discord.ui.InputText(label='商品价格 USDT（最多两位小数）',max_length=20)

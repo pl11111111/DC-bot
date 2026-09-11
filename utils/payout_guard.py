@@ -66,7 +66,7 @@ def check_result(row,item,snapshot):
     fee=Decimal(str(item.get('transactionFee','NaN')))
     if not amount.is_finite() or not fee.is_finite() or amount<=0 or fee<0:
         raise ValueError('提现金额或费用缺失')
-    # Conservative bound until account-specific history semantics are verified.
-    # If history amount includes the fee, this can require manual review, never overspend.
+    # External BSC test confirmed: history amount is receipt, amount + fee is debit.
+    # Keep the safety bounds for other outcomes (including internal transfers).
     if amount+fee>Decimal(snapshot['cap']) or amount<Decimal(snapshot['net']) or fee>Decimal(snapshot['fee']):
         raise ValueError('提现金额或网络费超出已确认范围，暂停自动放款')

@@ -48,11 +48,13 @@ class PayoutTests(unittest.IsolatedAsyncioTestCase):
         async def update(sql,args,**kw):
             state[args[-1]].update(state=args[0],provider_id=args[1])
         request=AsyncMock(return_value=None)
-        with patch.object(p,'require_ready',AsyncMock()),patch.object(p.db,'transaction',tx),patch.object(p.db,'query',update),patch.object(p.payout_guard,'authorize',AsyncMock(return_value={})),patch('utils.binance_api.make_api_request',request),patch.dict(os.environ,NEW_WITHDRAW_AMOUNT_MODE='gross'):
+        with patch.object(p,'require_ready',AsyncMock()),patch.object(p.db,'transaction',tx),patch.object(p.db,'query',update),patch.object(p.payout_guard,'authorize',AsyncMock(return_value={})),patch('utils.binance_api.make_api_request',request),patch.dict(os.environ,NEW_WITHDRAW_AMOUNT_MODE='net'):
             first=await p.release('new:order','0x'+'a'*40,100,Decimal('.1'),Decimal('99.9'))
             second=await p.release('new:order','0x'+'a'*40,100,Decimal('.1'),Decimal('99.9'))
             self.assertFalse(first[0]);self.assertFalse(second[0])
             self.assertEqual(request.await_count,1)
+            self.assertEqual(Decimal(request.await_args.args[2]['amount']),Decimal(100))
+            self.assertEqual(request.await_args.args[2]['walletType'],'0')
             self.assertEqual(state['new:order']['state'],'unknown')
             with self.assertRaises(ValueError):
                 await p.release('new:order','0x'+'b'*40,100,Decimal('.1'),Decimal('99.9'))
@@ -65,9 +67,11 @@ class PayoutTests(unittest.IsolatedAsyncioTestCase):
         with patch.object(p,'require_ready',AsyncMock()),patch.object(p.db,'transaction',failing),patch('utils.binance_api.make_api_request',request),patch.dict(os.environ,NEW_WITHDRAW_AMOUNT_MODE='gross'):
             with self.assertRaises(RuntimeError): await p.release('new:x','0x'+'a'*40,100)
             request.assert_not_awaited()
-    async def test_fee_unknown_stops_before_ledger_write(self):
-        with patch.object(p,'require_ready',AsyncMock()),patch.dict(os.environ,NEW_WITHDRAW_AMOUNT_MODE=''):
-            with self.assertRaises(ValueError): await p.release('new:x','0x'+'a'*40,100)
+    async def test_quote_works_without_manual_mode(self):
+        result=[{'coin':'USDT','networkList':[{'network':'BSC','withdrawEnable':True,'withdrawFee':'.01','withdrawMin':'3','withdrawIntegerMultiple':'.00000001'}]}]
+        with patch('utils.binance_api.make_api_request',AsyncMock(return_value=result)),patch.dict(os.environ,NEW_WITHDRAW_AMOUNT_MODE=''):
+            fee,net=await p.payout_quote('0x'+'a'*40,Decimal('3.01'))
+            self.assertEqual((fee,net),(Decimal('.01'),Decimal('3')))
 
 class IsolationTests(unittest.IsolatedAsyncioTestCase):
     async def test_legacy_listener_does_not_receive_new_guild(self):
