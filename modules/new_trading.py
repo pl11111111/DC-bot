@@ -459,6 +459,31 @@ class NewTrading(commands.Cog):
         await self.transition(row['id'],'invoicing','paying',self.bot.user.id)
         await self.post(await self.order(row['id']))
 
+    async def retire_payout_confirmation(self,inter):
+        if getattr(inter,'message',None):
+            try: await trade_card.retire(inter.message)
+            except discord.HTTPException:
+                log.warning('Could not retire payout confirmation buttons')
+
+    async def payout_progress(self,inter,ident):
+        """Read-only recovery for a stale confirmation; never submit again."""
+        fresh=await self.order(ident)
+        payout=await db.query('SELECT state FROM payouts WHERE order_key=%s',('new:'+ident,),shared=True,one=True)
+        state=payout['state'] if payout else None
+        status=fresh['status'] if fresh else None
+        if state in ('unknown','failed','review'):
+            text='这笔提现已有处理记录，结果需要管理员核对，请勿重复提交。'
+        elif status in ('completed','refunded'):
+            text='本订单已完成结算，请查看最新交易消息，不需要再次领取。'
+        elif status=='test_closed':
+            text='本订单已记为测试结清，资金留存在担保账户，领取入口已关闭。'
+        elif state or status in ('releasing','releasing_refund'):
+            text='本订单的收款申请已受理，正在核对提现结果。请等待最新交易消息，不要重复提交。'
+        else:
+            text='订单状态已改变，这个收款确认已失效，请使用最新交易消息。'
+        await self.retire_payout_confirmation(inter)
+        await inter.followup.send(text,ephemeral=True)
+
     async def address_modal(self,inter,row):
         refund=row['status']=='refund_ready'
         payee=row['buyer_id'] if refund else row['seller_id']
@@ -481,15 +506,25 @@ class NewTrading(commands.Cog):
                     if confirm.user.id!=payee: return
                     await confirm.response.defer(ephemeral=True)
                     try:
+                        fresh=await self.order(row['id'])
+                        if not fresh or fresh['status']!=row['status']:
+                            return await self.payout_progress(confirm,row['id'])
                         fresh_fee,fresh_net=await payments.payout_quote(address.value.strip(),gross)
                         if (fee,net)!=(fresh_fee,fresh_net): raise ValueError('费用已变化，请重新领取查看报价')
                         await self.transition(row['id'],row['status'],'releasing_refund' if refund else 'releasing',confirm.user.id,{'address':address.value,'gross':gross,'fee':fee,'net':net})
+                        await self.retire_payout_confirmation(confirm)
                         await db.query('UPDATE orders SET address=%s WHERE id=%s',(address.value.strip(),row['id']))
                         await payments.release('new:'+row['id'],address.value.strip(),gross,fee,net)
                         await confirm.followup.send('提现已提交或结果待核对。请勿重复操作，确认最终结果后会更新订单。',ephemeral=True)
-                    except Exception as exc:
+                        try: await self.post(await self.order(row['id']))
+                        except Exception: log.exception('Could not refresh payout progress card: %s',row['id'])
+                    except OrderStateChanged:
+                        await self.payout_progress(confirm,row['id'])
+                    except ValueError as exc:
+                        await confirm.followup.send(str(exc),ephemeral=True)
+                    except Exception:
                         log.exception('Payout request failed')
-                        await confirm.followup.send(str(exc) if isinstance(exc,ValueError) else '放款结果待核对，请联系管理员，勿重复提现。',ephemeral=True)
+                        await confirm.followup.send('放款结果待核对，请联系管理员，勿重复提现。',ephemeral=True)
                 button.callback=accepted
                 view.add_item(button)
                 summary=(f'退款总额（含已付服务费）：{gross} U\n网络费从退款中扣除，由退款领取方承担。'

@@ -17,7 +17,8 @@ class PaymentUiTests(unittest.IsolatedAsyncioTestCase):
     def test_exact_amount_fee_and_address_are_not_rounded_for_display(self):
         embed=ui.payment_embed({'id':'order'},self.invoice(),D('.01'))
         self.assertEqual(embed.title,'5.011234 USDT')
-        self.assertIn('5.021234',embed.fields[0].value)
+        self.assertIn('5.021234',embed.fields[1].value)
+        self.assertEqual([field.name for field in embed.fields],['收款地址','币安提币提示（BEP20）','⏳ 付款截止'])
         self.assertIn(ADDRESS,ui.copy_text(self.invoice()))
         self.assertEqual(ui.deadline(self.invoice()),int(datetime(2026,9,12,4,30,tzinfo=timezone.utc).timestamp()))
         layout=trade_card.components(embed,None,True,True)

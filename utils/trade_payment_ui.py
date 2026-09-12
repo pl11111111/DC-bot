@@ -29,15 +29,17 @@ def payment_embed(row,invoice,fee=None):
     amount=Decimal(str(invoice['amount']))
     stamp=deadline(invoice)
     embed=discord.Embed(title=f'{amount:.6f} USDT',
-        description='**本订单实际应到账金额**\n请严格按此金额付款，包含识别尾数。\n**网络：USDT · BSC / BEP20**',color=0x9854DE)
-    hint='转出手续费由买家承担，以付款平台显示的**实际到账金额**为准。'
+        description='**网络：USDT · BSC / BEP20**\n\n下方二维码仅包含地址，请核对 USDT-BEP20 网络和到账金额。',color=0x9854DE)
+    embed.add_field(name='收款地址',value=f"```\n{invoice['address']}\n```",inline=False)
+    hint=f'链上必须实际到账 **{amount:.6f} USDT**。'
     if fee is not None:
         fee=Decimal(str(fee))
-        hint+=f'\n若币安从填写金额中扣除 {fee:f} USDT，请填写 **{amount+fee:.6f} USDT**。'
-    hint+='\n若页面显示的到账金额已等于上方金额，请勿再次加手续费。费用可能变化，请在转出前核对。'
+        hint+=f'\n若币安从填写金额扣除 {fee:f} USDT，请填写 **{amount+fee:.6f} USDT**。'
+        hint+=f'\n若币安页面显示的到账金额已经等于上方链上到账金额，请勿再次加 {fee:f}。'
+    else:
+        hint+='\n请核对付款平台的实际到账金额，转出手续费由买家承担；若到账金额已等于上方金额，请勿重复加手续费。'
     embed.add_field(name='币安提币提示（BEP20）',value=hint,inline=False)
     embed.add_field(name='⏳ 付款截止',value=f'<t:{stamp}:f>（<t:{stamp}:R>）\n过期请勿转账；已付款请勿重复支付。',inline=False)
-    embed.add_field(name='收款地址',value=f"```\n{invoice['address']}\n```\n下方二维码仅包含地址，请核对 USDT-BEP20 网络和到账金额。",inline=False)
     embed.set_footer(text='订单 '+row['id'])
     return embed
 

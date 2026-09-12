@@ -162,7 +162,7 @@ async def release(key, address, gross, fee=Decimal(0), net=None):
     request_id = hashlib.sha256(key.encode()).hexdigest()[:32]
     async with db.transaction(True) as cur:
         # One persistent account gate serializes reservations and honors a safety freeze.
-        await cur.execute("INSERT IGNORE INTO payment_settings(setting_key,value) VALUES('payout_freeze','')",())
+        await cur.execute("INSERT INTO payment_settings(setting_key,value) VALUES('payout_freeze','') ON DUPLICATE KEY UPDATE setting_key=setting_key",())
         await cur.execute("SELECT value FROM payment_settings WHERE setting_key='payout_freeze' FOR UPDATE",())
         gate=await cur.fetchone()
         if not gate or gate['value']:
