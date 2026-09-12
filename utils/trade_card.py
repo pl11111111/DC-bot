@@ -8,12 +8,17 @@ V2=1 << 15
 
 def components(embed,view,has_banner,has_qr=False):
     children=[]
+    qr={'type':12,'items':[{'media':{'url':'attachment://payment-qr.png'},'description':'USDT-BEP20 收款地址二维码；请自行核对币种、网络和实际到账金额。'}]}
     if has_banner:
         children.append({'type':12,'items':[{'media':{'url':'attachment://trade-step.png'}}]})
     if embed is not None:
         body=[]
         if embed.title: body.append('## '+embed.title)
         if embed.description: body.append(embed.description)
+        if has_qr:
+            if body: children.append({'type':10,'content':'\n\n'.join(body)})
+            children.append(qr)
+            body=[]
         compact=[]
         def flush():
             if compact:
@@ -32,8 +37,10 @@ def components(embed,view,has_banner,has_qr=False):
         if len(text)>4000:
             raise ValueError('交易卡片文字超过 Discord 限制，请缩短内容')
         if text: children.append({'type':10,'content':text})
-    if has_qr:
-        children.append({'type':12,'items':[{'media':{'url':'attachment://payment-qr.png'},'description':'USDT-BEP20 收款地址二维码；请自行核对币种、网络和实际到账金额。'}]})
+    elif has_qr:
+        children.append(qr)
+    if sum(len(child['content']) for child in children if child['type']==10)>4000:
+        raise ValueError('交易卡片文字超过 Discord 限制，请缩短内容')
     if view and view.children:
         children.append({'type':14,'divider':True,'spacing':1})
         children.extend(view.to_components())

@@ -23,8 +23,12 @@ class PaymentUiTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(ui.deadline(self.invoice()),int(datetime(2026,9,12,4,30,tzinfo=timezone.utc).timestamp()))
         layout=trade_card.components(embed,None,True,True)
         self.assertEqual(len(layout),1)
-        self.assertEqual([x['type'] for x in layout[0]['components']],[12,10,12])
-        self.assertIn('payment-qr.png',layout[0]['components'][-1]['items'][0]['media']['url'])
+        self.assertEqual([x['type'] for x in layout[0]['components']],[12,10,12,10])
+        self.assertIn('下方二维码仅包含地址',layout[0]['components'][1]['content'])
+        self.assertNotIn(ADDRESS,layout[0]['components'][1]['content'])
+        self.assertIn('payment-qr.png',layout[0]['components'][2]['items'][0]['media']['url'])
+        self.assertIn(ADDRESS,layout[0]['components'][3]['content'])
+        self.assertEqual(len(embed.fields[1].value.split('\n\n')),3)
 
     def test_qr_is_png_and_contains_only_persisted_address(self):
         original=ui.qrcode.QRCode.add_data

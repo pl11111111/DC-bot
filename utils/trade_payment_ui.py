@@ -34,10 +34,10 @@ def payment_embed(row,invoice,fee=None):
     hint=f'链上必须实际到账 **{amount:.6f} USDT**。'
     if fee is not None:
         fee=Decimal(str(fee))
-        hint+=f'\n若币安从填写金额扣除 {fee:f} USDT，请填写 **{amount+fee:.6f} USDT**。'
-        hint+=f'\n若币安页面显示的到账金额已经等于上方链上到账金额，请勿再次加 {fee:f}。'
+        hint+=f'\n\n若币安从填写金额扣除 {fee:f} USDT，请填写 **{amount+fee:.6f} USDT**。'
+        hint+=f'\n\n若币安页面显示的到账金额已经等于上方链上到账金额，**请勿再次加 {fee:f}**。'
     else:
-        hint+='\n请核对付款平台的实际到账金额，转出手续费由买家承担；若到账金额已等于上方金额，请勿重复加手续费。'
+        hint+='\n\n请核对付款平台的实际到账金额，转出手续费由买家承担。\n\n若到账金额已等于上方金额，**请勿重复加手续费**。'
     embed.add_field(name='币安提币提示（BEP20）',value=hint,inline=False)
     embed.add_field(name='⏳ 付款截止',value=f'<t:{stamp}:f>（<t:{stamp}:R>）\n过期请勿转账；已付款请勿重复支付。',inline=False)
     embed.set_footer(text='订单 '+row['id'])
