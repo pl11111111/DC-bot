@@ -56,6 +56,7 @@ class NewCommunity(commands.Cog):
         self.invites=None
         self.invite_lock=asyncio.Lock()
         self.role_locks={}
+        self.panel_lock=asyncio.Lock()
         self.ready=False
         self.maintenance.start()
 
@@ -64,22 +65,39 @@ class NewCommunity(commands.Cog):
 
     async def channel(self, ident):
         channel=self.bot.get_channel(ident)
+        if channel is None: channel=await self.bot.fetch_channel(ident)
         if not channel or getattr(channel.guild,'id',None)!=cfg.GUILD_ID:
             raise ValueError('频道未配置或不属于新社群')
         return channel
 
-    async def save_panel(self, channel_id, key, title, body, view=None):
+    async def save_panel(self, channel_id, key, title, body, view=None, banner=None):
         if not channel_id:
             return
+        async with self.panel_lock:
+            if key in ('rules','verify') and await db.setting('community_content:channel:'+str(channel_id)):
+                return
+            # An admin edit may race the maintenance snapshot. Use persisted content.
+            if key in ('rules','verify') or key.startswith('channel:'):
+                current=await db.setting('community_content:'+key)
+                if current:
+                    title,body,banner=current['title'],current['body'],current.get('banner')
+            await self._save_panel(channel_id,key,title,body,view,banner)
+
+    async def _save_panel(self, channel_id, key, title, body, view=None, banner=None):
         channel=await self.channel(channel_id)
         content=texts()
-        banner=content.get('banners',{}).get(str(channel_id))
+        if banner is None: banner=content.get('banners',{}).get(str(channel_id))
         rendered=embeds(title,body,banner)
         previous=await db.setting('panel:'+key)
+        if not previous and key.startswith('channel:'):
+            legacy='verify' if channel_id==cfg.VERIFY_CHANNEL_ID else 'rules' if channel_id==cfg.RULES_CHANNEL_ID else None
+            if legacy: previous=await db.setting('panel:'+legacy)
         if previous and previous['channel']==channel.id:
             try:
                 msg=await channel.fetch_message(previous['message'])
                 await msg.edit(embeds=rendered,view=view,allowed_mentions=discord.AllowedMentions.none())
+                if key.startswith('channel:'):
+                    await db.setting('panel:'+key,{'channel':channel.id,'message':msg.id})
                 return
             except discord.NotFound:
                 pass
@@ -108,9 +126,18 @@ class NewCommunity(commands.Cog):
                 except discord.Forbidden:
                     log.error('Cannot read new guild invites; verification/languages remain available')
             content=texts()
-            if content.get('verify_body'):
-                await self.save_panel(cfg.VERIFY_CHANNEL_ID,'verify',content['verify_title'],content['verify_body'],
-                                      buttons([('我已阅读并同意，完成验证','verify')]))
+            for kind,channel_id in (('rules',cfg.RULES_CHANNEL_ID),('verify',cfg.VERIFY_CHANNEL_ID)):
+                if not channel_id: continue
+                if await db.setting('community_content:channel:'+str(channel_id)): continue
+                if cfg.RULES_CHANNEL_ID==cfg.VERIFY_CHANNEL_ID:
+                    log.error('Rules and verify must use different channels')
+                    break
+                saved=await db.setting('community_content:'+kind)
+                panel=saved or {'title':content.get(kind+'_title',kind.title()),'body':content.get(kind+'_body',''),
+                                'banner':content.get(kind+'_banner',content.get('banners',{}).get(str(channel_id)))}
+                if panel['body']:
+                    await self.save_panel(channel_id,kind,panel['title'],panel['body'],
+                        buttons([('我已阅读并同意，完成验证','verify')]) if kind=='verify' else None,banner=panel.get('banner'))
             await self.save_panel(cfg.LANGUAGE_CHANNEL_ID,'language','Choose your language',
                 'English is the default. You may select one additional language, or none.\nEnglish 为默认语言，可额外选择一种语言，也可以不选。',
                 buttons([(name,'lang:'+str(role)) for name,role in cfg.LANGUAGES.items() if role]+[('清除额外语言','lang:clear')]))
@@ -188,9 +215,13 @@ class NewCommunity(commands.Cog):
         await interaction.response.defer(ephemeral=True)
         try:
             if custom=='new:verify':
-                if interaction.channel_id!=cfg.VERIFY_CHANNEL_ID:
-                    raise ValueError('请在验证频道操作')
-                panel=await db.setting('panel:verify')
+                configured=await db.setting('community_content:channel:'+str(interaction.channel_id))
+                if configured:
+                    if not configured.get('verification'): raise ValueError('此频道面板未启用验证。')
+                    panel=await db.setting('panel:channel:'+str(interaction.channel_id))
+                else:
+                    if interaction.channel_id!=cfg.VERIFY_CHANNEL_ID: raise ValueError('请在验证频道操作')
+                    panel=await db.setting('panel:verify')
                 if not panel or panel['message']!=interaction.message.id:
                     raise ValueError('此验证面板已更新，请使用最新面板')
                 role=interaction.guild.get_role(cfg.VERIFIED_ROLE_ID)
@@ -245,8 +276,66 @@ class NewCommunity(commands.Cog):
             log.exception('New community interaction failed')
             await interaction.followup.send(str(exc) if isinstance(exc,ValueError) else '操作失败，请联系管理员检查权限或服务状态。',ephemeral=True)
 
-    @discord.slash_command(name='new_notice',description='发布、编辑或重新发布新社群通知')
-    async def notice(self,ctx,channel: discord.abc.GuildChannel, message_id: str = '', copy_from: str = ''):
+    @discord.slash_command(name='new_panel',description='选择频道发布或修改内容、横幅及验证按钮')
+    async def panel(self,ctx,channel:discord.TextChannel,verification:bool=None):
+        if not ctx.guild or ctx.guild.id!=cfg.GUILD_ID or not admin(ctx.author,cfg.NOTICE_ADMIN_ROLES):
+            return await ctx.respond('没有操作权限。',ephemeral=True)
+        if channel.guild.id!=cfg.GUILD_ID or not isinstance(channel,discord.TextChannel):
+            return await ctx.respond('请选择新社群的文字或公告频道，论坛规则请使用 /new_forum_rules。',ephemeral=True)
+        channel_id=channel.id
+        kind='channel:'+str(channel_id)
+        content=texts()
+        saved=await db.setting('community_content:'+kind)
+        legacy='verify' if channel_id==cfg.VERIFY_CHANNEL_ID else 'rules' if channel_id==cfg.RULES_CHANNEL_ID else ''
+        if not saved and legacy: saved=await db.setting('community_content:'+legacy)
+        current=saved or dict(title=content.get(legacy+'_title','频道通知'),body=content.get(legacy+'_body',''),
+                             banner=content.get(legacy+'_banner',content.get('banners',{}).get(str(channel_id),'')))
+        verified=bool(current.get('verification',legacy=='verify')) if verification is None else verification
+        modal=discord.ui.Modal(title='频道内容与横幅')
+        title=discord.ui.InputText(label='标题',value=current['title'],max_length=200)
+        body=discord.ui.InputText(label='正文',style=discord.InputTextStyle.long,value=current['body'],max_length=3500)
+        banner=discord.ui.InputText(label='横幅 HTTPS 图片链接（留空移除）',required=False,value=current.get('banner') or '',max_length=1000)
+        for field in (title,body,banner): modal.add_item(field)
+        async def submitted(inter):
+            if inter.user.id!=ctx.author.id or not admin(inter.user,cfg.NOTICE_ADMIN_ROLES):
+                return await inter.response.send_message('没有操作权限。',ephemeral=True)
+            try: rendered=embeds(title.value,body.value,banner.value or '')
+            except ValueError as exc: return await inter.response.send_message(str(exc),ephemeral=True)
+            view=discord.ui.View(timeout=300)
+            button=discord.ui.Button(label='确认发布 / 保存修改',emoji='📣',style=discord.ButtonStyle.success)
+            used=False
+            async def accepted(click):
+                nonlocal used
+                if click.user.id!=ctx.author.id or not admin(click.user,cfg.NOTICE_ADMIN_ROLES):
+                    return await click.response.send_message('没有操作权限。',ephemeral=True)
+                if used: return await click.response.send_message('此预览已提交。',ephemeral=True)
+                used=True
+                await click.response.defer(ephemeral=True)
+                try:
+                    values=dict(title=title.value,body=body.value,banner=banner.value or '',verification=verified)
+                    await db.setting('community_content:'+kind,values)
+                    await db.audit(click.user.id,'community_panel_edit',{'kind':kind,'channel':channel_id,**values})
+                    await self.save_panel(channel_id,kind,title.value,body.value,
+                        buttons([('我已阅读并同意，完成验证','verify')]) if verified else None,banner=banner.value or '')
+                    await click.followup.send(f'已发布到 {channel.mention}，后续编辑使用 /new_panel。',ephemeral=True)
+                except Exception:
+                    log.exception('Community panel publish failed: %s',kind)
+                    await click.followup.send('发布未完成，请检查频道权限。内容若已保存，后台会重试发布。',ephemeral=True)
+            button.callback=accepted
+            view.add_item(button)
+            await inter.response.send_message(content=f'目标频道：{channel.mention}\n验证按钮：'+('开启' if verified else '关闭'),embeds=rendered,view=view,ephemeral=True)
+        modal.callback=submitted
+        await ctx.send_modal(modal)
+
+    @discord.slash_command(name='new_notice',description='发布、编辑或重新发布通知，可置顶论坛帖')
+    async def notice(self,ctx,channel: discord.abc.GuildChannel, message_id: str = '', copy_from: str = '',pin:bool=False):
+        await self.notice_editor(ctx,channel,message_id,copy_from,pin)
+
+    @discord.slash_command(name='new_forum_rules',description='发布或修改论坛置顶规则帖（仅管理员）')
+    async def forum_rules(self,ctx,forum:discord.ForumChannel,message_id:str=''):
+        await self.notice_editor(ctx,forum,message_id,'',True)
+
+    async def notice_editor(self,ctx,channel,message_id='',copy_from='',pin=False):
         if not ctx.guild or ctx.guild.id!=cfg.GUILD_ID or not admin(ctx.author,cfg.NOTICE_ADMIN_ROLES):
             return await ctx.respond('没有操作权限。',ephemeral=True)
         if channel.guild.id!=cfg.GUILD_ID or not isinstance(channel,(discord.TextChannel,discord.ForumChannel)):
@@ -285,18 +374,33 @@ class NewCommunity(commands.Cog):
                                 raise ValueError('编辑必须选择原通知频道；重新发布请留空消息 ID')
                             msg=await target.fetch_message(int(message_id))
                             if msg.author.id!=self.bot.user.id: raise ValueError('仅能编辑 bot 发布的通知')
+                            if isinstance(target,discord.Thread):
+                                await target.edit(name=title.value,archived=False)
                             await msg.edit(embeds=render,allowed_mentions=discord.AllowedMentions.none())
                         elif isinstance(channel,discord.ForumChannel):
                             selected=[int(x.strip()) for x in tags.value.split(',') if x.strip()]
                             available={t.id for t in channel.available_tags}
                             if len(selected)>5 or not set(selected)<=available: raise ValueError('论坛标签不正确')
+                            if channel.requires_tag and not selected: raise ValueError('这个论坛要求标签，请填写一个有效的论坛标签 ID。')
                             created=await channel.create_thread(name=title.value,embeds=render,applied_tags=[t for t in channel.available_tags if t.id in selected],allowed_mentions=discord.AllowedMentions.none())
                             msg=await created.fetch_message(created.id)
                         else:
                             msg=await channel.send(embeds=render,allowed_mentions=discord.AllowedMentions.none())
                         await db.setting('notice:'+str(msg.id),{'channel':msg.channel.id,'title':title.value,'body':body.value,'banner':banner.value})
                         await db.audit(click.user.id,'notice_publish',{'message':msg.id,'channel':msg.channel.id,'title':title.value,'body':body.value,'banner':banner.value})
+                        if pin:
+                            try:
+                                if isinstance(msg.channel,discord.Thread):
+                                    await msg.channel.edit(pinned=True,reason='Administrator published forum rules')
+                                else:
+                                    await msg.pin(reason='Administrator pinned notice')
+                                await db.audit(click.user.id,'notice_pin',{'message':msg.id,'channel':msg.channel.id})
+                            except discord.HTTPException:
+                                log.exception('Notice saved but pin failed: %s',msg.id)
+                                return await click.followup.send(f'内容已保存，但置顶失败。请检查 bot 的管理帖子/消息权限。消息 ID：{msg.id}，请用此 ID 编辑重试，勿重复新建。',ephemeral=True)
                         await click.followup.send(f'已保存。消息 ID：{msg.id}',ephemeral=True)
+                    except ValueError as exc:
+                        await click.followup.send(str(exc),ephemeral=True)
                     except Exception:
                         log.exception('Notice publish failed')
                         await click.followup.send('发布失败，请检查频道权限、标签和消息是否存在。',ephemeral=True)

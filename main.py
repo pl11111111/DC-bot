@@ -85,7 +85,7 @@ async def on_ready():
     try:
         logger.info("开始同步斜杠命令...")
         # 在py-cord中，使用sync_commands()同步所有斜杠命令
-        await bot.sync_commands()
+        await bot.sync_commands(check_guilds=[gid for gid in (config.GUILD_ID,config.NEW.GUILD_ID) if gid],delete_existing=True)
         logger.info("斜杠命令同步完成")
     except Exception as e:
         logger.error(f"同步斜杠命令时出错: {e}", exc_info=True)
@@ -258,8 +258,13 @@ async def on_application_command_error(ctx, error):
                     "您没有使用此命令的权限。",
                     ephemeral=True
                 )
+        elif isinstance(error,(commands.CheckFailure,discord.CheckFailure)):
+            if not ctx.response.is_done():
+                await ctx.respond('此指令不适用于当前社群，或你没有使用权限。',ephemeral=True)
+            else:
+                await ctx.followup.send('此指令不适用于当前社群，或你没有使用权限。',ephemeral=True)
         else:
-            logger.error(f"命令错误: {error}", exc_info=True)
+            logger.error(f"命令错误: {error}", exc_info=(type(error),error,error.__traceback__))
             if not ctx.response.is_done():
                 await ctx.respond(
                     "处理此命令时发生错误。请稍后重试。",

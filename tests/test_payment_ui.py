@@ -16,19 +16,19 @@ class PaymentUiTests(unittest.IsolatedAsyncioTestCase):
 
     def test_exact_amount_fee_and_address_are_not_rounded_for_display(self):
         embed=ui.payment_embed({'id':'order'},self.invoice(),D('.01'))
-        self.assertEqual(embed.title,'5.011234 USDT')
+        self.assertEqual(embed.title,'实际应到账：5.011234 USDT')
         self.assertIn('5.021234',embed.fields[1].value)
-        self.assertEqual([field.name for field in embed.fields],['收款地址','币安提币提示（BEP20）','⏳ 付款截止'])
+        self.assertEqual([field.name for field in embed.fields],['收款地址','🏦 使用币安或其他交易所提现','binance邀请链接','邀请码','⏳ 付款截止'])
         self.assertIn(ADDRESS,ui.copy_text(self.invoice()))
         self.assertEqual(ui.deadline(self.invoice()),int(datetime(2026,9,12,4,30,tzinfo=timezone.utc).timestamp()))
         layout=trade_card.components(embed,None,True,True)
         self.assertEqual(len(layout),1)
         self.assertEqual([x['type'] for x in layout[0]['components']],[12,10,12,10])
-        self.assertIn('下方二维码仅包含地址',layout[0]['components'][1]['content'])
+        self.assertIn('下方二维码仅包含收款地址',layout[0]['components'][1]['content'])
         self.assertNotIn(ADDRESS,layout[0]['components'][1]['content'])
         self.assertIn('payment-qr.png',layout[0]['components'][2]['items'][0]['media']['url'])
         self.assertIn(ADDRESS,layout[0]['components'][3]['content'])
-        self.assertEqual(len(embed.fields[1].value.split('\n\n')),3)
+        self.assertEqual(len(embed.fields[1].value.split('\n\n')),4)
 
     def test_qr_is_png_and_contains_only_persisted_address(self):
         original=ui.qrcode.QRCode.add_data

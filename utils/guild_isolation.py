@@ -6,6 +6,20 @@ from discord.ext import commands
 LEGACY={'modules.trading','modules.rental','modules.social','modules.admin','modules.market','modules.giveaway','modules.party'}
 
 class IsolatedBot(commands.Bot):
+    def add_application_command(self,command):
+        module=getattr(getattr(command,'callback',None),'__module__','')
+        if not module:
+            module=getattr(getattr(command,'cog',None),'__module__','')
+        if not module and getattr(command,'subcommands',None):
+            module=getattr(getattr(command.subcommands[0],'callback',None),'__module__','')
+        if module in LEGACY:
+            if not config.GUILD_ID: return
+            command.guild_ids=[config.GUILD_ID]
+        elif module.startswith('modules.new_'):
+            if not config.NEW.GUILD_ID: return
+            command.guild_ids=[config.NEW.GUILD_ID]
+        return super().add_application_command(command)
+
     def add_listener(self,func,name=None):
         if func.__module__ in LEGACY:
             original=func

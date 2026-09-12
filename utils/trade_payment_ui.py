@@ -28,18 +28,21 @@ def qr_file(address):
 def payment_embed(row,invoice,fee=None):
     amount=Decimal(str(invoice['amount']))
     stamp=deadline(invoice)
-    embed=discord.Embed(title=f'{amount:.6f} USDT',
-        description='**网络：USDT · BSC / BEP20**\n\n下方二维码仅包含地址，请核对 USDT-BEP20 网络和到账金额。',color=0x9854DE)
+    embed=discord.Embed(title=f'实际应到账：{amount:.6f} USDT',
+        description='请精确支付以上金额，**不要自行增加到账金额**。\n\n**网络：USDT · BSC / BEP20**\n请勿使用其他币种或网络。\n\n下方二维码仅包含收款地址。扫码后，请核对币种、网络和付款金额。',color=0x9854DE)
     embed.add_field(name='收款地址',value=f"```\n{invoice['address']}\n```",inline=False)
-    hint=f'链上必须实际到账 **{amount:.6f} USDT**。'
+    hint=f'请以提现页面的 **“实际到账金额”** 为准，必须等于 **{amount:.6f} USDT**。'
     if fee is not None:
         fee=Decimal(str(fee))
-        hint+=f'\n\n若币安从填写金额扣除 {fee:f} USDT，请填写 **{amount+fee:.6f} USDT**。'
-        hint+=f'\n\n若币安页面显示的到账金额已经等于上方链上到账金额，**请勿再次加 {fee:f}**。'
+        hint+=f'\n\n仅当币安从填写金额中扣除 **{fee:f} USDT** 时，请填写 **{amount+fee:.6f} USDT**。'
+        hint+=f'\n\n若页面显示的实际到账已是 **{amount:.6f} USDT**，**请勿再次加 {fee:f}**。'
     else:
         hint+='\n\n请核对付款平台的实际到账金额，转出手续费由买家承担。\n\n若到账金额已等于上方金额，**请勿重复加手续费**。'
-    embed.add_field(name='币安提币提示（BEP20）',value=hint,inline=False)
-    embed.add_field(name='⏳ 付款截止',value=f'<t:{stamp}:f>（<t:{stamp}:R>）\n过期请勿转账；已付款请勿重复支付。',inline=False)
+    hint+='\n\n其他交易所的费用可能不同，请按该平台的实际费用核对**实际到账金额**。'
+    embed.add_field(name='🏦 使用币安或其他交易所提现',value=hint,inline=False)
+    embed.add_field(name='binance邀请链接',value='https://www.bsmkweb.cc/register?ref=1024490102',inline=False)
+    embed.add_field(name='邀请码',value='```\n1024490102\n```',inline=False)
+    embed.add_field(name='⏳ 付款截止',value=f'<t:{stamp}:f>（<t:{stamp}:R>）\n\n过期请勿转账；已付款请勿重复支付。若超时但已付款，请点击取消关闭按钮，联系管理员核实。',inline=False)
     embed.set_footer(text='订单 '+row['id'])
     return embed
 

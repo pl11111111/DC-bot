@@ -173,6 +173,15 @@ class LoadTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(right_click),2)
         self.assertTrue(all(c.guild_ids==[2] for c in right_click))
         for command in bot.pending_application_commands: command.to_dict()
+        for command in bot.pending_application_commands:
+            module=getattr(getattr(command,'callback',None),'__module__','') or getattr(getattr(command,'cog',None),'__module__','')
+            if module.startswith('modules.new_'):
+                self.assertEqual(command.guild_ids,[2],command.name)
+            elif module.startswith('modules.'):
+                self.assertEqual(command.guild_ids,[1],command.name)
+        names={c.name for c in bot.pending_application_commands if c.guild_ids==[2]}
+        self.assertNotIn('查询积分',names)
+        self.assertTrue({'new_panel','new_forum_rules','new_notice'}<=names)
         for name in list(bot.extensions): bot.unload_extension(name)
         await bot.close()
         # Existing legacy modules create tasks outside Cog cleanup. Cancel in this test only.
