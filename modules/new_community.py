@@ -6,7 +6,7 @@ from pathlib import Path
 import discord
 from discord.ext import commands, tasks
 import config
-from utils import new_store as db
+from utils import new_store as db, notice_card
 
 cfg = config.NEW
 log = logging.getLogger(__name__)
@@ -87,7 +87,7 @@ class NewCommunity(commands.Cog):
         channel=await self.channel(channel_id)
         content=texts()
         if banner is None: banner=content.get('banners',{}).get(str(channel_id))
-        rendered=embeds(title,body,banner)
+        rendered=notice_card.layout(title,body,banner,view)
         previous=await db.setting('panel:'+key)
         if not previous and key.startswith('channel:'):
             legacy='verify' if channel_id==cfg.VERIFY_CHANNEL_ID else 'rules' if channel_id==cfg.RULES_CHANNEL_ID else None
@@ -95,13 +95,13 @@ class NewCommunity(commands.Cog):
         if previous and previous['channel']==channel.id:
             try:
                 msg=await channel.fetch_message(previous['message'])
-                await msg.edit(embeds=rendered,view=view,allowed_mentions=discord.AllowedMentions.none())
+                await notice_card.edit(msg,rendered)
                 if key.startswith('channel:'):
                     await db.setting('panel:'+key,{'channel':channel.id,'message':msg.id})
                 return
             except discord.NotFound:
                 pass
-        msg=await channel.send(embeds=rendered,view=view,allowed_mentions=discord.AllowedMentions.none())
+        msg=await notice_card.send(channel,rendered)
         await db.setting('panel:'+key,{'channel':channel.id,'message':msg.id})
 
     async def snapshot_invites(self,guild):
@@ -299,7 +299,7 @@ class NewCommunity(commands.Cog):
         async def submitted(inter):
             if inter.user.id!=ctx.author.id or not admin(inter.user,cfg.NOTICE_ADMIN_ROLES):
                 return await inter.response.send_message('没有操作权限。',ephemeral=True)
-            try: rendered=embeds(title.value,body.value,banner.value or '')
+            try: notice_card.layout(title.value,body.value,banner.value or '')
             except ValueError as exc: return await inter.response.send_message(str(exc),ephemeral=True)
             view=discord.ui.View(timeout=300)
             button=discord.ui.Button(label='确认发布 / 保存修改',emoji='📣',style=discord.ButtonStyle.success)
@@ -308,22 +308,26 @@ class NewCommunity(commands.Cog):
                 nonlocal used
                 if click.user.id!=ctx.author.id or not admin(click.user,cfg.NOTICE_ADMIN_ROLES):
                     return await click.response.send_message('没有操作权限。',ephemeral=True)
-                if used: return await click.response.send_message('此预览已提交。',ephemeral=True)
+                if used: return await click.response.send_message('此预览正在处理、已完成或结果待核对，请查看第一次点击后的回复。',ephemeral=True)
                 used=True
-                await click.response.defer(ephemeral=True)
                 try:
+                    await click.response.defer(ephemeral=True)
                     values=dict(title=title.value,body=body.value,banner=banner.value or '',verification=verified)
                     await db.setting('community_content:'+kind,values)
                     await db.audit(click.user.id,'community_panel_edit',{'kind':kind,'channel':channel_id,**values})
                     await self.save_panel(channel_id,kind,title.value,body.value,
                         buttons([('我已阅读并同意，完成验证','verify')]) if verified else None,banner=banner.value or '')
                     await click.followup.send(f'已发布到 {channel.mention}，后续编辑使用 /new_panel。',ephemeral=True)
+                except (discord.Forbidden,discord.NotFound,ValueError) as exc:
+                    used=False
+                    await click.followup.send(f'发布未完成：{exc}。修正权限或内容后可以再次点击本预览。',ephemeral=True)
                 except Exception:
                     log.exception('Community panel publish failed: %s',kind)
-                    await click.followup.send('发布未完成，请检查频道权限。内容若已保存，后台会重试发布。',ephemeral=True)
+                    await click.followup.send('发布结果待核对，请检查目标频道和服务器日志；不要重复新建。可重新使用 /new_panel 检查已保存的面板。',ephemeral=True)
             button.callback=accepted
             view.add_item(button)
-            await inter.response.send_message(content=f'目标频道：{channel.mention}\n验证按钮：'+('开启' if verified else '关闭'),embeds=rendered,view=view,ephemeral=True)
+            await notice_card.preview(inter,notice_card.layout(title.value,body.value,banner.value or '',view,
+                f'目标频道：{channel.mention}\n验证按钮：'+('开启' if verified else '关闭')),view)
         modal.callback=submitted
         await ctx.send_modal(modal)
 
@@ -353,22 +357,26 @@ class NewCommunity(commands.Cog):
         for field in (title,body,banner,tags): modal.add_item(field)
         async def submitted(inter):
             try:
-                render=embeds(title.value,body.value,banner.value or texts().get('banners',{}).get(str(channel.id)))
+                chosen_banner=banner.value or texts().get('banners',{}).get(str(channel.id))
+                render=notice_card.layout(title.value,body.value,chosen_banner)
                 view=discord.ui.View(timeout=300)
                 publish=discord.ui.Button(label='确认发布 / 保存修改',emoji='📣',style=discord.ButtonStyle.success)
-                used=False
+                state='ready'
+                published=None
                 async def confirmed(click):
-                    nonlocal used
+                    nonlocal state,published
                     if click.user.id!=ctx.author.id or not admin(click.user,cfg.NOTICE_ADMIN_ROLES):
                         return await click.response.send_message('没有操作权限。',ephemeral=True)
-                    if used:
-                        return await click.response.send_message('此预览已提交，请勿重复发布。',ephemeral=True)
-                    used=True
-                    await click.response.defer(ephemeral=True)
-                    publish.disabled=True
-                    await click.message.edit(view=view)
+                    if state!='ready':
+                        messages={'processing':'正在发布，请稍候。','done':f'已发布成功。消息 ID：{getattr(published,"id","")}。',
+                                  'unknown':'发布结果待核对，请先检查目标频道和第一次点击后的回复，避免重复发帖。'}
+                        return await click.response.send_message(messages[state],ephemeral=True)
+                    state='processing'
                     try:
-                        if previous and message_id:
+                        await click.response.defer(ephemeral=True)
+                        if published is not None:
+                            msg=published
+                        elif previous and message_id:
                             target=await self.channel(previous['channel'])
                             if getattr(target,'parent_id',target.id)!=channel.id and target.id!=channel.id:
                                 raise ValueError('编辑必须选择原通知频道；重新发布请留空消息 ID')
@@ -376,17 +384,17 @@ class NewCommunity(commands.Cog):
                             if msg.author.id!=self.bot.user.id: raise ValueError('仅能编辑 bot 发布的通知')
                             if isinstance(target,discord.Thread):
                                 await target.edit(name=title.value,archived=False)
-                            await msg.edit(embeds=render,allowed_mentions=discord.AllowedMentions.none())
+                            await notice_card.edit(msg,render)
                         elif isinstance(channel,discord.ForumChannel):
                             selected=[int(x.strip()) for x in tags.value.split(',') if x.strip()]
                             available={t.id for t in channel.available_tags}
                             if len(selected)>5 or not set(selected)<=available: raise ValueError('论坛标签不正确')
                             if channel.requires_tag and not selected: raise ValueError('这个论坛要求标签，请填写一个有效的论坛标签 ID。')
-                            created=await channel.create_thread(name=title.value,embeds=render,applied_tags=[t for t in channel.available_tags if t.id in selected],allowed_mentions=discord.AllowedMentions.none())
-                            msg=await created.fetch_message(created.id)
+                            msg=await notice_card.create_forum(channel,title.value,render,[t for t in channel.available_tags if t.id in selected])
                         else:
-                            msg=await channel.send(embeds=render,allowed_mentions=discord.AllowedMentions.none())
-                        await db.setting('notice:'+str(msg.id),{'channel':msg.channel.id,'title':title.value,'body':body.value,'banner':banner.value})
+                            msg=await notice_card.send(channel,render,nonce=inter.id)
+                        published=msg
+                        await db.setting('notice:'+str(msg.id),{'channel':msg.channel.id,'title':title.value,'body':body.value,'banner':chosen_banner or ''})
                         await db.audit(click.user.id,'notice_publish',{'message':msg.id,'channel':msg.channel.id,'title':title.value,'body':body.value,'banner':banner.value})
                         if pin:
                             try:
@@ -396,17 +404,25 @@ class NewCommunity(commands.Cog):
                                     await msg.pin(reason='Administrator pinned notice')
                                 await db.audit(click.user.id,'notice_pin',{'message':msg.id,'channel':msg.channel.id})
                             except discord.HTTPException:
+                                state='ready'
                                 log.exception('Notice saved but pin failed: %s',msg.id)
                                 return await click.followup.send(f'内容已保存，但置顶失败。请检查 bot 的管理帖子/消息权限。消息 ID：{msg.id}，请用此 ID 编辑重试，勿重复新建。',ephemeral=True)
-                        await click.followup.send(f'已保存。消息 ID：{msg.id}',ephemeral=True)
-                    except ValueError as exc:
-                        await click.followup.send(str(exc),ephemeral=True)
+                        state='done'
+                        await click.followup.send(f'已发布成功。频道：{channel.mention}，消息 ID：{msg.id}',ephemeral=True)
+                    except (ValueError,discord.Forbidden,discord.NotFound) as exc:
+                        state='ready'
+                        await click.followup.send(f'发布未完成：{exc}。修正后可再次点击此预览。',ephemeral=True)
+                    except discord.HTTPException as exc:
+                        state='ready' if exc.status==400 or published is not None else 'unknown'
+                        log.exception('Notice publish HTTP failure')
+                        await click.followup.send(f'发布未完成（HTTP {exc.status}）。'+('请检查内容和权限后重试本预览。' if state=='ready' else '结果需核对，请检查目标频道，勿重复新建。'),ephemeral=True)
                     except Exception:
+                        state='ready' if published is not None else 'unknown'
                         log.exception('Notice publish failed')
-                        await click.followup.send('发布失败，请检查频道权限、标签和消息是否存在。',ephemeral=True)
+                        await click.followup.send(f'内容已发出，消息 ID：{published.id}；记录保存或后续操作失败，可再次点击本预览继续，不会新建消息。' if published else '发布结果待核对，请检查目标频道及服务器日志，勿重复新建。',ephemeral=True)
                 publish.callback=confirmed
                 view.add_item(publish)
-                await inter.response.send_message(embeds=render,view=view,ephemeral=True)
+                await notice_card.preview(inter,notice_card.layout(title.value,body.value,chosen_banner,view),view)
             except ValueError as exc:
                 await inter.response.send_message(str(exc),ephemeral=True)
         modal.callback=submitted

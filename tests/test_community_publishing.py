@@ -11,7 +11,7 @@ from modules.new_community import NewCommunity
 class CommunityPublishingTests(unittest.IsolatedAsyncioTestCase):
     def actor(self): return NS(id=7)
     def interaction(self):
-        return NS(user=self.actor(),response=NS(send_message=AsyncMock(),defer=AsyncMock()),followup=NS(send=AsyncMock()),message=NS(edit=AsyncMock()))
+        return NS(id=123,user=self.actor(),response=NS(send_message=AsyncMock(),defer=AsyncMock()),followup=NS(send=AsyncMock()),message=NS(edit=AsyncMock()))
 
     async def test_rules_and_verify_editor_save_separate_content_and_buttons(self):
         cog=object.__new__(NewCommunity)
@@ -29,8 +29,9 @@ class CommunityPublishingTests(unittest.IsolatedAsyncioTestCase):
                 for field,value in zip(modal.children,[kind+' title',kind+' body','https://example.com/'+kind+'.png']):
                     field._input_value=value
                 inter=self.interaction()
-                await modal.callback(inter)
-                button=inter.response.send_message.await_args.kwargs['view'].children[0]
+                with patch('modules.new_community.notice_card.preview',AsyncMock()) as preview:
+                    await modal.callback(inter)
+                button=preview.await_args.args[2].children[0]
                 click=self.interaction()
                 await button.callback(click)
                 self.assertEqual(setting.await_args.args[0],'community_content:channel:'+str(channel.id))
@@ -74,20 +75,21 @@ class CommunityPublishingTests(unittest.IsolatedAsyncioTestCase):
         cog.channel=AsyncMock(return_value=thread)
         ctx=NS(guild=NS(id=2),author=self.actor(),respond=AsyncMock(),send_modal=AsyncMock())
         previous=dict(channel=20,title='old',body='old',banner='') if editing else None
-        with patch('modules.new_community.admin',return_value=True),patch('modules.new_community.db.setting',AsyncMock(return_value=previous)) as setting,patch('modules.new_community.db.audit',AsyncMock()):
+        with patch('modules.new_community.admin',return_value=True),patch('modules.new_community.db.setting',AsyncMock(return_value=previous)) as setting,patch('modules.new_community.db.audit',AsyncMock()),patch('modules.new_community.notice_card.create_forum',AsyncMock(return_value=msg)) as create,patch('modules.new_community.notice_card.edit',AsyncMock()) as edit:
             await cog.notice_editor(ctx,forum,'20' if editing else '',pin=True)
             modal=ctx.send_modal.await_args.args[0]
             for field,value in zip(modal.children,['Rules','New rules','','']): field._input_value=value
             inter=self.interaction()
-            await modal.callback(inter)
-            button=inter.response.send_message.await_args.kwargs['view'].children[0]
+            with patch('modules.new_community.notice_card.preview',AsyncMock()) as preview:
+                await modal.callback(inter)
+            button=preview.await_args.args[2].children[0]
             click=self.interaction()
             await button.callback(click)
             if editing:
-                forum.create_thread.assert_not_awaited()
-                msg.edit.assert_awaited_once()
+                create.assert_not_awaited()
+                edit.assert_awaited_once()
                 self.assertEqual(thread.edit.await_args_list[0].kwargs,dict(name='Rules',archived=False))
-            else: forum.create_thread.assert_awaited_once()
+            else: create.assert_awaited_once()
             self.assertTrue(thread.edit.await_args.kwargs['pinned'])
             self.assertEqual(setting.await_args.args[0],'notice:20')
             if pin_error: self.assertIn('内容已保存，但置顶失败',click.followup.send.await_args.args[0])
