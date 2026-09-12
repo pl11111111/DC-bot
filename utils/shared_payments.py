@@ -125,21 +125,29 @@ async def find_deposit(key, address, expected):
     return None
 
 async def payout_quote(address, gross):
-    from utils.binance_api import make_api_request
     if not re.fullmatch(r'0x[0-9a-fA-F]{40}',address) or int(address[2:],16)==0:
         raise ValueError('请输入有效的 USDT-BEP20 地址')
-    data = await make_api_request('/sapi/v1/capital/config/getall','GET',{})
-    coin = next((c for c in data or [] if c.get('coin')=='USDT'), None) if isinstance(data,list) else None
-    network = next((n for n in coin.get('networkList',[]) if n.get('network')=='BSC'),None) if coin else None
-    if not network or not network.get('withdrawEnable'):
-        raise ValueError('无法确认提现费用或 BSC 提现暂不可用，请稍后重试')
+    return await payout_amount_quote(gross)
+
+async def payout_amount_quote(gross):
+    """Read-only network check, also used before accepting buyer payment."""
+    network=await withdrawal_network()
     fee = Decimal(str(network['withdrawFee']))
     gross = money(gross)
     step = Decimal(str(network.get('withdrawIntegerMultiple') or '0.000001'))
     net = ((gross-fee)/step).to_integral_value(rounding=ROUND_DOWN)*step
     if net < Decimal(str(network['withdrawMin'])) or net <= 0:
-        raise ValueError('扣除网络费后低于最低提现金额，需管理员处理')
+        raise ValueError(f"商品价款扣除网络费后低于最低提现金额：网络费 {fee} USDT，最低到账 {network['withdrawMin']} USDT。请提高商品金额；已付款订单请联系管理员处理。")
     return fee, net
+
+async def withdrawal_network():
+    from utils.binance_api import make_api_request
+    data = await make_api_request('/sapi/v1/capital/config/getall','GET',{})
+    coin = next((c for c in data or [] if c.get('coin')=='USDT'), None) if isinstance(data,list) else None
+    network = next((n for n in coin.get('networkList',[]) if n.get('network')=='BSC'),None) if coin else None
+    if not network or not network.get('withdrawEnable'):
+        raise ValueError('无法确认提现费用或 BSC 提现暂不可用，请稍后重试')
+    return network
 
 async def release(key, address, gross, fee=Decimal(0), net=None):
     await require_ready()

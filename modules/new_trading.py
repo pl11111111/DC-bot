@@ -10,12 +10,12 @@ import discord
 from discord.commands import user_command
 from discord.ext import commands, tasks
 import config
-from utils import new_store as db, shared_payments as payments, binance_api, trade_card
+from utils import new_store as db, shared_payments as payments, binance_api, trade_card, trade_payment_ui
 from modules.new_community import buttons, admin, texts
 
 cfg=config.NEW
 log=logging.getLogger(__name__)
-TERMINAL=('completed','cancelled','refunded')
+TERMINAL=('completed','cancelled','refunded','test_closed')
 BANNER_DIR=Path(__file__).resolve().parents[1] / 'png'
 # Match the named workflow stage; creating an order renders only its first banner.
 STEP_BANNERS={
@@ -73,6 +73,7 @@ class NewTrading(commands.Cog):
         options={
             'pending':[('确认交易','confirm'),('取消交易','cancel')],
             'confirmed':[('获取付款信息','pay'),('取消交易','cancel')],
+            'paying':[('复制付款信息','payment_info')],
             'paid':[('标记为已发货','ship'),('发起争议','dispute')],
             'shipped':[('确认收货','receipt'),('发起争议','dispute')],
             'receipt_confirmed':[('领取货款','collect')],
@@ -81,10 +82,11 @@ class NewTrading(commands.Cog):
             'completed':[('保留频道并通知管理员','keep')],
             'cancelled':[('保留频道并通知管理员','keep')],
             'refunded':[('保留频道并通知管理员','keep')],
+            'test_closed':[('保留频道并通知管理员','keep')],
         }.get(row['status'],[])
         return buttons([(label,'trade:'+action+':'+ident) for label,action in options])
 
-    async def send_step(self,channel,status,embed=None,view=None):
+    async def send_step(self,channel,status,embed=None,view=None,qr_file=None):
         """Attach a local banner above the body, only inside an order channel."""
         if channel.guild.id!=cfg.GUILD_ID:
             return
@@ -96,6 +98,8 @@ class NewTrading(commands.Cog):
             except OSError:
                 log.exception('Trade banner unavailable: %s',filename)
         try:
+            if qr_file is not None:
+                return await trade_card.send(channel,embed,view,file,qr_file)
             return await trade_card.send(channel,embed,view,file)
         finally:
             if file: file.close()
@@ -128,6 +132,7 @@ class NewTrading(commands.Cog):
             'refund_ready':('等待领取退款',f'{buyer}，退款已获准，请点击「领取退款」核对退款金额并提供收款地址。'),
             'releasing_refund':('正在处理退款','退款申请已提交处理，请等待系统核对结果，勿重复申请。'),
             'refunded':('退款已完成','系统已确认退款转出成功。'),
+            'test_closed':('测试订单已结清','管理员已确认本订单全部为本人测试资金，资金留存在担保账户；未执行货款转出或退款。'),
         }
         title,notice=stages.get(row['status'],('交易待核对','请联系管理员确认当前进度。'))
         embed=discord.Embed(title=title,description=notice,color=0x9854DE)
@@ -139,12 +144,13 @@ class NewTrading(commands.Cog):
         credits=Decimal(str(row.get('credits',0)))
         for name,value in [('📦 物品',row['item']),('💰 价格',amount(price)+' USDT'),
                            ('🔒 托管费',amount(fee)+' USDT')]:
-            embed.add_field(name=name,value=value,inline=False)
+            embed.add_field(name=name,value=value,inline=name!='📦 物品')
         if credits:
             embed.add_field(name='🎟️ 积分抵扣',value=amount(credits)+' USDT',inline=False)
-        embed.add_field(name='💵 订单合计',value=amount(price+fee-credits)+' USDT\n付款时请以系统账单的实际到账金额为准（包含识别尾数）。',inline=False)
-        embed.add_field(name='🛒 买家',value=buyer,inline=False)
-        embed.add_field(name='🏪 卖家',value=seller,inline=False)
+        embed.add_field(name='💵 订单合计',value=amount(price+fee-credits)+' USDT',inline=True)
+        embed.add_field(name='💰 卖家货款',value=amount(price)+' USDT（转出网络费从中扣除）',inline=True)
+        embed.add_field(name='🛒 买家',value=buyer,inline=True)
+        embed.add_field(name='🏪 卖家',value=seller,inline=True)
         if row.get('terms'):
             embed.add_field(name='附加详情',value=row['terms'],inline=False)
         created=row.get('created_at')
@@ -162,10 +168,28 @@ class NewTrading(commands.Cog):
             return
         if row['status'] in TERMINAL:
             extra+='\n频道将在约 5 分钟后清理。如需保留，请点击下方按钮。'
+        qr_file=None
         embed=self.order_embed(row,extra)
+        if row['status']=='paying':
+            invoice=await db.query('SELECT * FROM invoices WHERE order_key=%s',('new:'+row['id'],),shared=True,one=True)
+            if not invoice: raise ValueError('付款账单缺失，请管理员核对，勿自行转账')
+            fee=None
+            try:
+                network=await payments.withdrawal_network()
+                fee=Decimal(str(network['withdrawFee']))
+            except Exception:
+                log.warning('Cannot quote incoming transfer fee hint for order %s',row['id'])
+            embed=trade_payment_ui.payment_embed(row,invoice,fee)
+            qr_file=trade_payment_ui.qr_file(invoice['address'])
         key='trade_panel:'+row['id']
         previous=await db.setting(key)
-        message=await self.send_step(channel,row['status'],embed,self.view(row))
+        try:
+            if qr_file is not None:
+                message=await self.send_step(channel,row['status'],embed,self.view(row),qr_file)
+            else:
+                message=await self.send_step(channel,row['status'],embed,self.view(row))
+        finally:
+            if qr_file is not None: qr_file.close()
         if message:
             await db.setting(key,{'message':message.id,'channel':channel.id})
         if previous and previous['channel']==channel.id:
@@ -198,7 +222,7 @@ class NewTrading(commands.Cog):
             return await ctx.respond(msg,ephemeral=True) if hasattr(ctx,'respond') else await ctx.response.send_message(msg,ephemeral=True)
         modal=discord.ui.Modal(title='担保交易条件')
         item=discord.ui.InputText(label='商品名称及数量',max_length=150)
-        amount=discord.ui.InputText(label='商品价格 USDT（最多两位小数）',max_length=20)
+        amount=discord.ui.InputText(label='商品价格 USDT（至少3，最多两位小数）',max_length=20)
         terms=discord.ui.InputText(label='交付方式、期限及特别约定',style=discord.InputTextStyle.long,max_length=1500)
         for field in (item,amount,terms): modal.add_item(field)
         async def submitted(inter):
@@ -208,6 +232,8 @@ class NewTrading(commands.Cog):
                 if inter.user.id!=user.id: raise ValueError('仅发起者可提交此表单')
                 value=payments.money(amount.value)
                 if value!=value.quantize(Decimal('.01')): raise ValueError('商品金额最多两位小数')
+                if value<Decimal('3'): raise ValueError('商品金额不能低于 3 USDT，托管费不计入商品金额。')
+                await payments.payout_amount_quote(value)
                 member=await guild.fetch_member(other.id)
                 if member.bot: raise ValueError('不支持与 bot 交易')
                 category=self.bot.get_channel(cfg.TRADE_CATEGORY_ID)
@@ -221,7 +247,7 @@ class NewTrading(commands.Cog):
                         await cur.execute('INSERT INTO balances(user_id) VALUES(%s) ON DUPLICATE KEY UPDATE user_id=user_id',(uid,))
                         await cur.execute('SELECT user_id FROM balances WHERE user_id=%s FOR UPDATE',(uid,))
                         await cur.fetchone()
-                        await cur.execute("SELECT COUNT(*) AS n FROM orders WHERE (buyer_id=%s OR seller_id=%s) AND status NOT IN ('completed','cancelled','refunded')",(uid,uid))
+                        await cur.execute("SELECT COUNT(*) AS n FROM orders WHERE (buyer_id=%s OR seller_id=%s) AND status NOT IN ('completed','cancelled','refunded','test_closed')",(uid,uid))
                         if (await cur.fetchone())['n']>=cfg.MAX_ACTIVE: raise ValueError('交易参与者已达到同时进行的订单上限')
                     await cur.execute('INSERT INTO orders(id,buyer_id,seller_id,initiator_id,source_id,item,terms,amount,fee) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s)',
                                       (ident,buyer,seller,user.id,source,item.value,terms.value,value,cfg.FEE))
@@ -342,6 +368,12 @@ class NewTrading(commands.Cog):
         if action not in valid:
             await inter.response.defer(ephemeral=True)
             return await self.current_step(inter,row)
+        if action=='payment_info':
+            await inter.response.defer(ephemeral=True)
+            invoice=await db.query('SELECT * FROM invoices WHERE order_key=%s',('new:'+ident,),shared=True,one=True)
+            if not invoice or invoice['state']!='waiting' or time.time()>=trade_payment_ui.deadline(invoice):
+                return await inter.followup.send('账单已过期或付款已识别，请勿继续转账；已付款请联系管理员核对。',ephemeral=True)
+            return await inter.followup.send(trade_payment_ui.copy_text(invoice),ephemeral=True,allowed_mentions=discord.AllowedMentions.none())
         if action=='collect':
             payee=row['buyer_id'] if row['status']=='refund_ready' else row['seller_id']
             if inter.user.id!=payee or row['status'] not in ('receipt_confirmed','refund_ready'):
@@ -363,6 +395,7 @@ class NewTrading(commands.Cog):
                 await self.transition(ident,'pending','confirmed',actor)
             elif action=='pay':
                 if actor!=row['buyer_id']: raise ValueError('只有买家可以付款')
+                await payments.payout_amount_quote(row['amount'])
                 async with db.transaction() as cur:
                     await cur.execute('SELECT * FROM orders WHERE id=%s FOR UPDATE',(ident,))
                     locked=await cur.fetchone()
@@ -421,7 +454,7 @@ class NewTrading(commands.Cog):
         amount=await payments.invoice(key,address,row['amount']+row['fee']-row['credits'])
         await db.query('UPDATE orders SET address=%s WHERE id=%s',(address,row['id']))
         await self.transition(row['id'],'invoicing','paying',self.bot.user.id)
-        await self.post(await self.order(row['id']),f'实际到账金额：{amount:.6f} USDT\n网络：BSC / BEP20\n地址：{address}\n30 分钟内付款。'+texts()['payment_notice'])
+        await self.post(await self.order(row['id']))
 
     async def address_modal(self,inter,row):
         refund=row['status']=='refund_ready'
@@ -502,7 +535,7 @@ class NewTrading(commands.Cog):
             if not guild: return
             await self.retry_forums(guild)
             if not cfg.PAYMENTS_ENABLED: return
-            finished=await db.query("SELECT o.* FROM orders o JOIN tracked_channels c ON c.channel_id=o.channel_id WHERE o.status IN ('completed','cancelled','refunded') AND c.hold=FALSE AND o.closed_at<UTC_TIMESTAMP()-INTERVAL 5 MINUTE")
+            finished=await db.query("SELECT o.* FROM orders o JOIN tracked_channels c ON c.channel_id=o.channel_id WHERE o.status IN ('completed','cancelled','refunded','test_closed') AND c.hold=FALSE AND o.closed_at<UTC_TIMESTAMP()-INTERVAL 5 MINUTE")
             for done in finished:
                 channel=self.bot.get_channel(done['channel_id'])
                 if channel and channel.guild.id==cfg.GUILD_ID:
@@ -625,6 +658,41 @@ class NewTrading(commands.Cog):
         button.callback=accepted
         view.add_item(button)
         await ctx.respond(f'订单 {order_id}\n决定：{decision}\n原因：{reason}\n退款将退还已认领入款，网络费由退款领取方承担。',view=view,ephemeral=True)
+
+    @discord.slash_command(name='new_trade_close_test',description='本人测试资金留存担保账户并结清订单（不转账）')
+    async def close_test(self,ctx,order_id:str,reason:str):
+        if not ctx.guild or ctx.guild.id!=cfg.GUILD_ID or not admin(ctx.author,cfg.TRADE_ADMIN_ROLES):
+            return await ctx.respond('没有操作权限。',ephemeral=True)
+        await ctx.defer(ephemeral=True)
+        row=await self.order(order_id)
+        deposit=await db.query('SELECT * FROM deposits WHERE order_key=%s',('new:'+order_id,),shared=True,one=True)
+        if not reason.strip() or len(reason)>500:
+            return await ctx.followup.send('请填写 1–500 字的测试结清原因。',ephemeral=True)
+        if not row or row['status']!='receipt_confirmed' or not deposit:
+            return await ctx.followup.send('仅支持有到账记录、已确认收货且未提交提现的测试订单。',ephemeral=True)
+        view=discord.ui.View(timeout=180)
+        button=discord.ui.Button(label='确认全部为本人测试资金，留存并结清',emoji='🧾',style=discord.ButtonStyle.danger)
+        async def accepted(inter):
+            if inter.user.id!=ctx.author.id or not admin(inter.user,cfg.TRADE_ADMIN_ROLES):
+                return await inter.response.send_message('无权确认。',ephemeral=True)
+            await inter.response.defer(ephemeral=True)
+            from utils.test_order_settlement import settle
+            try:
+                details=await settle(order_id,inter.user.id,row['amount'],deposit['amount'],reason.strip())
+            except ValueError as exc:
+                return await inter.followup.send(str(exc),ephemeral=True)
+            except Exception:
+                log.exception('Test settlement failed: %s',order_id)
+                return await inter.followup.send('结清结果需管理员核对，请勿重复操作。',ephemeral=True)
+            log.warning('Test funds retained: order=%s actor=%s amount=%s',order_id,inter.user.id,details['retained_in_account'])
+            try:
+                await self.post(await self.order(order_id))
+                await self.alert(f"测试订单已结清：{order_id}；管理员 {inter.user.id} 确认本人资金 {details['retained_in_account']} USDT 留存在担保账户，未执行转账。")
+            except Exception: log.exception('Test settlement notification failed: %s',order_id)
+            await inter.followup.send('测试结清已记录，未发起转账，领取入口已失效。频道约 5 分钟后清理。',ephemeral=True)
+        button.callback=accepted
+        view.add_item(button)
+        await ctx.followup.send(f"订单：{order_id}\n商品：{row['item']}\n实际到账：{deposit['amount']} USDT\n原因：{reason}\n\n确认表示：买家和卖家资金全部属于你本人，全部到账款留在担保账户，订单记为测试结清。不会发起提现或退款，不计入正常成交额。",view=view,ephemeral=True,allowed_mentions=discord.AllowedMentions.none())
 
 def setup(bot):
     if cfg.GUILD_ID and cfg.GUILD_ID!=config.GUILD_ID: bot.add_cog(NewTrading(bot))
