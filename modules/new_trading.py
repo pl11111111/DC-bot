@@ -222,7 +222,7 @@ class NewTrading(commands.Cog):
             return await ctx.respond(msg,ephemeral=True) if hasattr(ctx,'respond') else await ctx.response.send_message(msg,ephemeral=True)
         modal=discord.ui.Modal(title='担保交易条件')
         item=discord.ui.InputText(label='商品名称及数量',max_length=150)
-        amount=discord.ui.InputText(label='商品价格 USDT（至少3，最多两位小数）',max_length=20)
+        amount=discord.ui.InputText(label='商品价格 USDT（至少3.01，最多两位小数）',max_length=20)
         terms=discord.ui.InputText(label='交付方式、期限及特别约定',style=discord.InputTextStyle.long,max_length=1500)
         for field in (item,amount,terms): modal.add_item(field)
         async def submitted(inter):
@@ -232,7 +232,7 @@ class NewTrading(commands.Cog):
                 if inter.user.id!=user.id: raise ValueError('仅发起者可提交此表单')
                 value=payments.money(amount.value)
                 if value!=value.quantize(Decimal('.01')): raise ValueError('商品金额最多两位小数')
-                if value<Decimal('3'): raise ValueError('商品金额不能低于 3 USDT，托管费不计入商品金额。')
+                if value<Decimal('3.01'): raise ValueError('商品金额不能低于 3.01 USDT，托管费不计入商品金额。')
                 await payments.payout_amount_quote(value)
                 member=await guild.fetch_member(other.id)
                 if member.bot: raise ValueError('不支持与 bot 交易')
@@ -265,9 +265,11 @@ class NewTrading(commands.Cog):
                 await db.audit(user.id,'create',{'terms':terms.value,'source':source},ident)
                 await self.post(await self.order(ident),texts()['payment_notice'])
                 await inter.followup.send(f'交易已创建：{channel.mention}',ephemeral=True)
-            except Exception as exc:
+            except ValueError as exc:
+                await inter.followup.send(str(exc),ephemeral=True)
+            except Exception:
                 log.exception('Create new order failed')
-                await inter.followup.send(str(exc) if isinstance(exc,ValueError) else '建单失败，请联系管理员核对。',ephemeral=True)
+                await inter.followup.send('建单失败，请联系管理员核对。',ephemeral=True)
         modal.callback=submitted
         if hasattr(ctx,'send_modal'): await ctx.send_modal(modal)
         else: await ctx.response.send_modal(modal)
@@ -395,6 +397,7 @@ class NewTrading(commands.Cog):
                 await self.transition(ident,'pending','confirmed',actor)
             elif action=='pay':
                 if actor!=row['buyer_id']: raise ValueError('只有买家可以付款')
+                if row['amount']<Decimal('3.01'): raise ValueError('商品金额不能低于 3.01 USDT，请取消本订单并按新金额重新发起。')
                 await payments.payout_amount_quote(row['amount'])
                 async with db.transaction() as cur:
                     await cur.execute('SELECT * FROM orders WHERE id=%s FOR UPDATE',(ident,))
