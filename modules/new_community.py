@@ -21,7 +21,7 @@ def buttons(items):
         if kind=='trade':
             action=custom.split(':',2)[1]
             emoji={'confirm':'✅','cancel':'❌','pay':'💳','ship':'📦',
-                   'receipt':'✅','collect':'💰','dispute':'⚠️','keep':'📌','payment_info':'📋'}.get(action)
+                   'receipt':'✅','collect':'💰','dispute':'⚠️','keep':'📌','payment_info':'📋','payment_help':'🆘'}.get(action)
         else:
             emoji={'verify':'✅','lang':'🌐','invites':'👥','invite_link':'📨','forum':'🛒'}.get(kind)
             if custom=='lang:clear': emoji='🔄'

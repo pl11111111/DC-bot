@@ -74,12 +74,12 @@ class NewTrading(commands.Cog):
         options={
             'pending':[('确认交易','confirm'),('取消交易','cancel')],
             'confirmed':[('获取付款信息','pay'),('取消交易','cancel')],
-            'paying':[('复制付款信息','payment_info')],
+            'paying':[('复制付款信息','payment_info'),('付款有问题／呼叫管理员','payment_help')],
             'paid':[('标记为已发货','ship'),('发起争议','dispute')],
             'shipped':[('确认收货','receipt'),('发起争议','dispute')],
             'receipt_confirmed':[('领取货款','collect')],
             'refund_ready':[('领取退款','collect')],
-            'payment_review':[('已付款／取消关闭，请管理员核实','keep')],
+            'payment_review':[('已付款／取消关闭，请管理员核实','keep'),('付款有问题／呼叫管理员','payment_help')],
             'completed':[('保留频道并通知管理员','keep')],
             'cancelled':[('保留频道并通知管理员','keep')],
             'refunded':[('保留频道并通知管理员','keep')],
@@ -192,7 +192,10 @@ class NewTrading(commands.Cog):
         finally:
             if qr_file is not None: qr_file.close()
         if message:
-            await db.setting(key,{'message':message.id,'channel':channel.id})
+            await db.setting(key,{'message':message.id,'channel':channel.id,'status':row['status']})
+            if row['status']!='pending' and (not previous or previous.get('status')!=row['status']):
+                try: await self.notify_step(channel,row)
+                except discord.HTTPException: log.exception('Trade step notification failed: %s',row['id'])
         if previous and previous['channel']==channel.id:
             try:
                 old=await channel.fetch_message(previous['message'])
@@ -200,6 +203,32 @@ class NewTrading(commands.Cog):
             except discord.NotFound: pass
             except discord.HTTPException:
                 log.warning('Could not retire prior order buttons: %s',row['id'])
+
+    async def notify_step(self,channel,row):
+        buyer,seller=row['buyer_id'],row['seller_id']
+        both=[buyer,seller]
+        prompts={
+            'confirmed':([buyer],'交易已确认，请点击「获取付款信息」查看本订单应到账金额。'),
+            'invoicing':(both,'正在生成付款信息，请买家等待账单，卖家暂勿发货。'),
+            'paying':(both,f'付款信息已展示。买家 <@{buyer}> 请按卡片精确付款；卖家 <@{seller}> 请等待系统确认买家到账，暂勿发货，也不要替买家付款。'),
+            'paid':(both,f'系统已确认买家付款。卖家 <@{seller}> 请交付商品，完成后点击「标记为已发货」；买家请等待收货。'),
+            'shipped':([buyer],'卖家已标记发货，请核对商品，实际收到后再点击「确认收货」。'),
+            'receipt_confirmed':([seller],'买家已确认收货，请点击「领取货款」核对收款地址和费用。'),
+            'releasing':([seller],'收款申请正在处理，请等待系统核对提现结果。'),
+            'completed':(both,'交易已完成，系统已确认货款转出。'),
+            'cancelled':(both,'交易已取消，请勿继续付款或发货。'),
+            'disputed':(both,'交易已进入争议处理，请保留证据，等待管理员核实。'),
+            'payment_review':(both,'付款需要核对，请勿重复支付或自行补差额，卖家暂勿发货。可点击「付款有问题／呼叫管理员」。'),
+            'refund_ready':([buyer],'退款已获准，请点击「领取退款」核对金额和退款地址。'),
+            'releasing_refund':([buyer],'退款申请正在处理，请等待系统核对结果。'),
+            'refunded':(both,'系统已确认退款转出。'),
+            'test_closed':(both,'管理员已记录本人测试资金留存结清，订单不再提供领取入口。'),
+        }
+        selected=prompts.get(row['status'])
+        if not selected: return
+        users,text=selected
+        await channel.send(' '.join(f'<@{uid}>' for uid in users)+'，'+text,
+            allowed_mentions=discord.AllowedMentions(users=[discord.Object(id=uid) for uid in users],roles=False,everyone=False))
 
     async def current_step(self,inter,row):
         """Recover UI without repeating a state change, invoice, or withdrawal."""
@@ -388,7 +417,25 @@ class NewTrading(commands.Cog):
         await inter.response.defer(ephemeral=True)
         try:
             actor=inter.user.id
-            if action=='keep':
+            if action=='payment_help':
+                async with self.cleanup_lock:
+                    last=await db.setting('payment_help:'+ident)
+                    if last and time.time()-last['time']<300:
+                        return await inter.followup.send('管理员已收到请求，频道已保留。请补充转账金额、交易哈希及付款截图，不要重复付款或补差额。',ephemeral=True)
+                    async with db.transaction() as cur:
+                        await cur.execute('SELECT status FROM orders WHERE id=%s FOR UPDATE',(ident,))
+                        fresh=await cur.fetchone()
+                        if not fresh or fresh['status'] not in ('paying','payment_review'):
+                            raise OrderStateChanged('付款步骤已改变，请使用最新交易消息')
+                        await cur.execute("UPDATE orders SET status='payment_review' WHERE id=%s",(ident,))
+                        await cur.execute('UPDATE tracked_channels SET hold=TRUE WHERE channel_id=%s OR channel_id=%s',(row['channel_id'],row.get('source_id')))
+                        await cur.execute('INSERT INTO audit(actor_id,action,details,order_id) VALUES(%s,%s,%s,%s)',
+                            (actor,'payment_help',db.encode({'from':fresh['status'],'reason':'用户请求核对付款，暂停自动履约并保留频道'}),ident))
+                    await self.alert(f'付款问题请求：订单 {ident}\n申请人：<@{actor}>\n交易频道：<#{row["channel_id"]}>\n请核实实际到账金额、币种、网络和交易哈希。若需手动退款，请先核对是否已处理并保留凭证；不得仅凭截图退款。',notify_admins=True,fallback=inter.channel)
+                    await db.setting('payment_help:'+ident,{'time':time.time(),'actor':actor})
+                await self.post(await self.order(ident),'已呼叫管理员，频道已保留。请提供实际转账金额、交易哈希和付款截图，等待核实；请勿自行补差额或重复支付。')
+                return await inter.followup.send('已呼叫管理员并暂停自动履约，频道不会因付款超时自动关闭。管理员将核对到账及是否需要手动退款。',ephemeral=True)
+            elif action=='keep':
                 if row['status'] not in (*TERMINAL,'payment_review'): raise ValueError('当前步骤不支持保留频道')
                 async with self.cleanup_lock:
                     await db.query('UPDATE tracked_channels SET hold=TRUE WHERE channel_id=%s',(row['channel_id'],))
@@ -539,10 +586,14 @@ class NewTrading(commands.Cog):
         modal.callback=submitted
         await inter.response.send_modal(modal)
 
-    async def alert(self,text):
+    async def alert(self,text,notify_admins=False,fallback=None):
         channel=self.bot.get_channel(cfg.ALERT_CHANNEL_ID)
+        if not channel or channel.guild.id!=cfg.GUILD_ID: channel=fallback
         if channel and channel.guild.id==cfg.GUILD_ID:
-            await channel.send(text,allowed_mentions=discord.AllowedMentions.none())
+            roles=[discord.Object(id=rid) for rid in cfg.TRADE_ADMIN_ROLES] if notify_admins else []
+            prefix=' '.join(f'<@&{role.id}>' for role in roles)
+            await channel.send((prefix+'\n' if prefix else '')+text,
+                allowed_mentions=discord.AllowedMentions(users=False,roles=roles,everyone=False))
         log.warning(text)
 
     async def timeout_channel(self,row):

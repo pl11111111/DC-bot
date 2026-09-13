@@ -50,6 +50,7 @@ class StaleButtonTests(unittest.IsolatedAsyncioTestCase):
         channel=NS(id=8,guild=NS(id=2),fetch_message=AsyncMock(return_value=old))
         cog.bot=NS(get_channel=lambda cid:channel)
         cog.send_step=AsyncMock(return_value=NS(id=11))
+        cog.notify_step=AsyncMock()
         row={'id':'order','channel_id':8,'status':'confirmed','item':'item','terms':'terms','buyer_id':1,'seller_id':2,'amount':3,'fee':2}
         with patch('modules.new_trading.db.setting',AsyncMock(side_effect=[{'channel':8,'message':10},None])):
             await cog._post(row)
