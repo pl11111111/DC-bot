@@ -41,6 +41,7 @@ class NewTrading(commands.Cog):
         self.pending_forums=set()
         self.post_lock=asyncio.Lock()
         self.cleanup_lock=asyncio.Lock()
+        self.access_ready=False
         self.worker.start()
 
     def cog_unload(self): self.worker.cancel()
@@ -223,7 +224,7 @@ class NewTrading(commands.Cog):
         modal=discord.ui.Modal(title='担保交易条件')
         item=discord.ui.InputText(label='商品名称及数量',max_length=150)
         amount=discord.ui.InputText(label='商品价格 USDT（至少3.01，最多两位小数）',max_length=20)
-        terms=discord.ui.InputText(label='交付方式、期限及特别约定',style=discord.InputTextStyle.long,max_length=1500)
+        terms=discord.ui.InputText(label='交付方式、期限及特别约定（选填）',style=discord.InputTextStyle.long,max_length=1500,required=False)
         for field in (item,amount,terms): modal.add_item(field)
         async def submitted(inter):
             await inter.response.defer(ephemeral=True)
@@ -235,6 +236,7 @@ class NewTrading(commands.Cog):
                 if value<Decimal('3.01'): raise ValueError('商品金额不能低于 3.01 USDT，托管费不计入商品金额。')
                 await payments.payout_amount_quote(value)
                 member=await guild.fetch_member(other.id)
+                initiator=await guild.fetch_member(user.id)
                 if member.bot: raise ValueError('不支持与 bot 交易')
                 category=self.bot.get_channel(cfg.TRADE_CATEGORY_ID)
                 if not isinstance(category,discord.CategoryChannel) or category.guild.id!=guild.id:
@@ -250,8 +252,8 @@ class NewTrading(commands.Cog):
                         await cur.execute("SELECT COUNT(*) AS n FROM orders WHERE (buyer_id=%s OR seller_id=%s) AND status NOT IN ('completed','cancelled','refunded','test_closed')",(uid,uid))
                         if (await cur.fetchone())['n']>=cfg.MAX_ACTIVE: raise ValueError('交易参与者已达到同时进行的订单上限')
                     await cur.execute('INSERT INTO orders(id,buyer_id,seller_id,initiator_id,source_id,item,terms,amount,fee) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s)',
-                                      (ident,buyer,seller,user.id,source,item.value,terms.value,value,cfg.FEE))
-                overwrites={guild.default_role:discord.PermissionOverwrite(view_channel=False),guild.me:discord.PermissionOverwrite(view_channel=True,send_messages=True,read_message_history=True),user:discord.PermissionOverwrite(view_channel=True,send_messages=True),member:discord.PermissionOverwrite(view_channel=True,send_messages=True)}
+                                      (ident,buyer,seller,user.id,source,item.value,terms.value or '',value,cfg.FEE))
+                overwrites={guild.default_role:discord.PermissionOverwrite(view_channel=False),guild.me:discord.PermissionOverwrite(view_channel=True,send_messages=True,read_message_history=True),initiator:discord.PermissionOverwrite(view_channel=True,send_messages=True,read_message_history=True),member:discord.PermissionOverwrite(view_channel=True,send_messages=True,read_message_history=True)}
                 for rid in cfg.TRADE_ADMIN_ROLES:
                     role=guild.get_role(rid)
                     if role: overwrites[role]=discord.PermissionOverwrite(view_channel=True,send_messages=True,read_message_history=True)
@@ -264,6 +266,8 @@ class NewTrading(commands.Cog):
                     raise
                 await db.audit(user.id,'create',{'terms':terms.value,'source':source},ident)
                 await self.post(await self.order(ident),texts()['payment_notice'])
+                await channel.send(f'<@{buyer}> <@{seller}>，交易频道已创建，请查看上方交易内容，由对方确认交易。',
+                    allowed_mentions=discord.AllowedMentions(users=[discord.Object(id=buyer),discord.Object(id=seller)],roles=False,everyone=False))
                 await inter.followup.send(f'交易已创建：{channel.mention}',ephemeral=True)
             except ValueError as exc:
                 await inter.followup.send(str(exc),ephemeral=True)
@@ -566,12 +570,36 @@ class NewTrading(commands.Cog):
                 await channel.delete(reason='Payment timeout; no request to retain channel')
                 await db.query('UPDATE tracked_channels SET closed_at=UTC_TIMESTAMP() WHERE channel_id=%s',(channel.id,))
 
+    async def repair_trade_access(self,guild):
+        rows=await db.query("SELECT o.* FROM orders o JOIN tracked_channels c ON c.channel_id=o.channel_id WHERE c.kind='trade' AND o.status NOT IN ('completed','cancelled','refunded','test_closed')")
+        complete=True
+        for row in rows:
+            try:
+                channel=self.bot.get_channel(row['channel_id'])
+                if channel is None:
+                    try: channel=await self.bot.fetch_channel(row['channel_id'])
+                    except discord.NotFound: continue
+                if not isinstance(channel,discord.TextChannel) or channel.guild.id!=guild.id: continue
+                for uid in (row['buyer_id'],row['seller_id']):
+                    try: member=guild.get_member(uid) or await guild.fetch_member(uid)
+                    except discord.NotFound: continue
+                    overwrite=channel.overwrites_for(member)
+                    if all(getattr(overwrite,key) is True for key in ('view_channel','send_messages','read_message_history')): continue
+                    overwrite.update(view_channel=True,send_messages=True,read_message_history=True)
+                    await channel.set_permissions(member,overwrite=overwrite,reason='Restore escrow participant history access')
+                    await db.audit(self.bot.user.id,'repair_trade_access',{'channel':channel.id,'member':uid},row['id'])
+            except Exception:
+                complete=False
+                log.exception('Could not repair trade channel access: %s',row['id'])
+        self.access_ready=complete
+
     @tasks.loop(seconds=60)
     async def worker(self):
         try:
             guild=self.bot.get_guild(cfg.GUILD_ID)
             if not guild: return
             await self.retry_forums(guild)
+            if not self.access_ready: await self.repair_trade_access(guild)
             if not cfg.PAYMENTS_ENABLED: return
             finished=await db.query("SELECT o.* FROM orders o JOIN tracked_channels c ON c.channel_id=o.channel_id WHERE o.status IN ('completed','cancelled','refunded','test_closed') AND c.hold=FALSE AND o.closed_at<UTC_TIMESTAMP()-INTERVAL 5 MINUTE")
             for done in finished:

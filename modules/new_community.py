@@ -87,7 +87,18 @@ class NewCommunity(commands.Cog):
         channel=await self.channel(channel_id)
         content=texts()
         if banner is None: banner=content.get('banners',{}).get(str(channel_id))
-        rendered=notice_card.layout(title,body,banner,view)
+        file=None
+        if key=='language':
+            file=discord.File(Path(__file__).resolve().parent.parent/'png'/'Language.png',filename='Language.png')
+            banner='attachment://Language.png'
+        try:
+            rendered=notice_card.layout(title,body,banner,view,attachment_banner=file is not None)
+            await self._publish_panel_message(channel,key,rendered,file)
+        finally:
+            if file is not None: file.close()
+
+    async def _publish_panel_message(self,channel,key,rendered,file=None):
+        channel_id=channel.id
         previous=await db.setting('panel:'+key)
         if not previous and key.startswith('channel:'):
             legacy='verify' if channel_id==cfg.VERIFY_CHANNEL_ID else 'rules' if channel_id==cfg.RULES_CHANNEL_ID else None
@@ -95,13 +106,13 @@ class NewCommunity(commands.Cog):
         if previous and previous['channel']==channel.id:
             try:
                 msg=await channel.fetch_message(previous['message'])
-                await notice_card.edit(msg,rendered)
+                await notice_card.edit(msg,rendered,file=file)
                 if key.startswith('channel:'):
                     await db.setting('panel:'+key,{'channel':channel.id,'message':msg.id})
                 return
             except discord.NotFound:
                 pass
-        msg=await notice_card.send(channel,rendered)
+        msg=await notice_card.send(channel,rendered,file=file)
         await db.setting('panel:'+key,{'channel':channel.id,'message':msg.id})
 
     async def snapshot_invites(self,guild):

@@ -10,11 +10,17 @@ from modules.new_community import NewCommunity,buttons
 
 class NoticeCardTests(unittest.IsolatedAsyncioTestCase):
     async def test_banner_body_and_buttons_share_container(self):
-        view=buttons([('Verify','verify')])
+        view=buttons([('Publish','publish')])
         layout=notice_card.layout('Rules','Body','https://example.com/banner.png',view)
         self.assertEqual(len(layout),1)
         self.assertEqual(layout[0]['type'],17)
         self.assertEqual([x['type'] for x in layout[0]['components']],[12,10,1])
+
+    async def test_verify_button_is_below_container(self):
+        layout=notice_card.layout('Verify','Body','https://example.com/banner.png',buttons([('Verify','verify')]))
+        self.assertEqual([item['type'] for item in layout],[17,1])
+        self.assertEqual([item['type'] for item in layout[0]['components']],[12,10])
+        self.assertEqual(layout[1]['components'][0]['custom_id'],'new:verify')
 
     async def test_ephemeral_preview_uses_webhook_and_registers_button_callback(self):
         view=buttons([('Publish','publish')])
