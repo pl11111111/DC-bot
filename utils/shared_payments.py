@@ -196,7 +196,7 @@ async def release(key, address, gross, fee=Decimal(0), net=None):
 async def reconcile(key):
     from utils.binance_api import make_api_request
     row = await db.query('SELECT * FROM payouts WHERE order_key=%s',(key,),shared=True,one=True)
-    if not row or row['state']=='completed':
+    if not row or row['state'] in ('completed','manual_refunded'):
         return row
     start=row['created_at'].replace(tzinfo=__import__('datetime').timezone.utc)
     end=min(datetime.now(__import__('datetime').timezone.utc),start+timedelta(days=6,hours=23))

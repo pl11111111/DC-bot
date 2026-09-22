@@ -17,6 +17,9 @@ def attachments(items):
 def naive(value):
     return value.astimezone(timezone.utc).replace(tzinfo=None)
 
+# Manual refunds remain evidence-protected until their separate close flow finishes.
+ACTIVE_ORDER_SQL="(o.status NOT IN ('completed','cancelled','refunded','test_closed','manual_refunded') OR (o.status='manual_refunded' AND NOT EXISTS (SELECT 1 FROM settings mc WHERE mc.setting_key=CONCAT('manual_close:',o.id) AND JSON_UNQUOTE(JSON_EXTRACT(mc.value,'$.phase'))='deleted')))"
+
 class NewMessageLog(commands.Cog):
     def __init__(self,bot):
         self.bot=bot
@@ -116,7 +119,7 @@ class NewMessageLog(commands.Cog):
     async def channel_deleted(self,channel_id):
         record=await self.tracked(channel_id)
         if not record: return
-        rows=await db.query("SELECT id FROM orders WHERE (channel_id=%s OR source_id=%s) AND status NOT IN ('completed','cancelled','refunded','test_closed')",(channel_id,channel_id))
+        rows=await db.query(f"SELECT o.id FROM orders o WHERE (o.channel_id=%s OR o.source_id=%s) AND {ACTIVE_ORDER_SQL}",(channel_id,channel_id))
         if rows:
             await db.query('UPDATE tracked_channels SET hold=TRUE WHERE channel_id=%s',(channel_id,))
             await self.warn(f'交易相关频道被删除，临时证据已暂停清理：{channel_id}')
@@ -144,7 +147,7 @@ class NewMessageLog(commands.Cog):
         condition=(f"{table}.{key}=%s AND EXISTS (SELECT 1 FROM tracked_channels c "
                    f"WHERE c.channel_id={table}.channel_id AND c.hold=FALSE AND NOT EXISTS "
                    "(SELECT 1 FROM orders o WHERE (o.channel_id=c.channel_id OR o.source_id=c.channel_id) "
-                   "AND o.status NOT IN ('completed','cancelled','refunded','test_closed')))")
+                   f"AND {ACTIVE_ORDER_SQL}))")
         # Re-evaluate protection when deleting, not only when selecting the batch.
         if clear_body:
             return await db.query("UPDATE messages SET body=NULL,attachments='[]' WHERE "+condition,(ident,))
@@ -156,7 +159,7 @@ class NewMessageLog(commands.Cog):
             async with self.lock:
                 await self.measure()
                 # Hold/protect both private channels and source forums of active orders.
-                safe="c.hold=FALSE AND NOT EXISTS (SELECT 1 FROM orders o WHERE (o.channel_id=c.channel_id OR o.source_id=c.channel_id) AND o.status NOT IN ('completed','cancelled','refunded','test_closed'))"
+                safe=f"c.hold=FALSE AND NOT EXISTS (SELECT 1 FROM orders o WHERE (o.channel_id=c.channel_id OR o.source_id=c.channel_id) AND {ACTIVE_ORDER_SQL})"
                 expired=f"SELECT m.message_id FROM messages m JOIN tracked_channels c ON c.channel_id=m.channel_id WHERE {safe} AND m.body IS NOT NULL AND ((c.kind='forum' AND m.expires_at<UTC_TIMESTAMP()) OR (c.closed_at IS NOT NULL AND c.closed_at<UTC_TIMESTAMP()-INTERVAL 7 DAY)) ORDER BY m.updated_at LIMIT 500"
                 rows=await db.query(expired)
                 for row in rows:
@@ -207,14 +210,19 @@ class NewMessageLog(commands.Cog):
         if not channel_id.isdigit() or not reason.strip():
             return await ctx.respond('请填写频道 ID 和结案原因。',ephemeral=True)
         cid=int(channel_id)
-        active=await db.query("SELECT id FROM orders WHERE (channel_id=%s OR source_id=%s) AND status NOT IN ('completed','cancelled','refunded','test_closed')",(cid,cid))
+        manual=await db.query("SELECT id FROM orders WHERE (channel_id=%s OR source_id=%s) AND status='manual_refunded'",(cid,cid))
+        for row in manual:
+            closure=await db.setting('manual_close:'+row['id'])
+            if not closure or closure.get('phase')!='deleted':
+                return await ctx.respond('手动退款频道仍待确认或有保留请求，请先通过 /new_trade_channel 处理。',ephemeral=True)
+        active=await db.query(f"SELECT o.id FROM orders o WHERE (o.channel_id=%s OR o.source_id=%s) AND {ACTIVE_ORDER_SQL}",(cid,cid))
         if active: return await ctx.respond('仍有未结束订单，不能解除证据保留。',ephemeral=True)
         view=discord.ui.View(timeout=180)
         button=discord.ui.Button(label='确认结案并恢复到期清理',emoji='🧹',style=discord.ButtonStyle.danger)
         async def confirm(inter):
             if inter.user.id!=ctx.author.id or not admin(inter.user,cfg.TRADE_ADMIN_ROLES): return
             await inter.response.defer(ephemeral=True)
-            await db.query("UPDATE tracked_channels c SET hold=FALSE,closed_at=UTC_TIMESTAMP() WHERE channel_id=%s AND NOT EXISTS (SELECT 1 FROM orders o WHERE (o.channel_id=c.channel_id OR o.source_id=c.channel_id) AND o.status NOT IN ('completed','cancelled','refunded','test_closed'))",(cid,))
+            await db.query(f"UPDATE tracked_channels c SET hold=FALSE,closed_at=UTC_TIMESTAMP() WHERE channel_id=%s AND NOT EXISTS (SELECT 1 FROM orders o WHERE (o.channel_id=c.channel_id OR o.source_id=c.channel_id) AND {ACTIVE_ORDER_SQL})",(cid,))
             await db.audit(inter.user.id,'release_evidence_hold',{'channel':cid,'reason':reason})
             await inter.followup.send('已核对并恢复符合条件记录的到期清理。',ephemeral=True)
         button.callback=confirm

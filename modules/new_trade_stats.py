@@ -20,7 +20,7 @@ ACTIVE={
 }
 REFUND=('refund_ready','releasing_refund')
 REVIEW=('disputed','payment_review')
-TERMINAL=('completed','cancelled','refunded','test_closed')
+TERMINAL=('completed','cancelled','refunded','test_closed','manual_refunded')
 
 
 def render(rows,now):
@@ -37,6 +37,7 @@ def render(rows,now):
     lines.extend([f'\nRefund pending: {count(REFUND)}',f'Dispute / exception review: {review}',
                   f"\nCompleted: {count(('completed',))}",f"Cancelled: {count(('cancelled',))}",
                   f"Refunded: {count(('refunded',))}",
+                  f"Manual refunds: {count(('manual_refunded',))}",
                   f"Test orders settled: {count(('test_closed',))}",
                   f'\nCompleted today: {int(done.get("today_n") or 0)}',
                   f'Today\'s completed volume: {today:,.2f} USDT',

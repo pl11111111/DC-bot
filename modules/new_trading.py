@@ -10,12 +10,12 @@ import discord
 from discord.commands import user_command
 from discord.ext import commands, tasks
 import config
-from utils import new_store as db, shared_payments as payments, binance_api, trade_card, trade_payment_ui
+from utils import new_store as db, shared_payments as payments, binance_api, trade_card, trade_payment_ui, trade_review
 from modules.new_community import buttons, admin, texts
 
 cfg=config.NEW
 log=logging.getLogger(__name__)
-TERMINAL=('completed','cancelled','refunded','test_closed')
+TERMINAL=('completed','cancelled','refunded','test_closed','manual_refunded')
 BANNER_DIR=Path(__file__).resolve().parents[1] / 'png'
 # Match the named workflow stage; creating an order renders only its first banner.
 STEP_BANNERS={
@@ -74,7 +74,7 @@ class NewTrading(commands.Cog):
         options={
             'pending':[('确认交易','confirm'),('取消交易','cancel')],
             'confirmed':[('获取付款信息','pay'),('取消交易','cancel')],
-            'paying':[('复制付款信息','payment_info'),('付款有问题／呼叫管理员','payment_help')],
+            'paying':[('付款说明','payment_info'),('呼叫管理员','payment_help')],
             'paid':[('标记为已发货','ship'),('发起争议','dispute')],
             'shipped':[('确认收货','receipt'),('发起争议','dispute')],
             'receipt_confirmed':[('领取货款','collect')],
@@ -133,6 +133,7 @@ class NewTrading(commands.Cog):
             'refund_ready':('等待领取退款',f'{buyer}，退款已获准，请点击「领取退款」核对退款金额并提供收款地址。'),
             'releasing_refund':('正在处理退款','退款申请已提交处理，请等待系统核对结果，勿重复申请。'),
             'refunded':('退款已完成','系统已确认退款转出成功。'),
+            'manual_refunded':('手动退款已登记','管理员已核实外部退款完成。本记录不会再次转账，请查看频道关闭确认通知。'),
             'test_closed':('测试订单已结清','管理员已确认本订单全部为本人测试资金，资金留存在担保账户；未执行货款转出或退款。'),
         }
         title,notice=stages.get(row['status'],('交易待核对','请联系管理员确认当前进度。'))
@@ -167,20 +168,14 @@ class NewTrading(commands.Cog):
         channel=self.bot.get_channel(row['channel_id'])
         if not channel or channel.guild.id!=cfg.GUILD_ID:
             return
-        if row['status'] in TERMINAL:
+        if row['status'] in TERMINAL and row['status']!='manual_refunded':
             extra+='\n频道将在约 5 分钟后清理。如需保留，请点击下方按钮。'
         qr_file=None
         embed=self.order_embed(row,extra)
         if row['status']=='paying':
             invoice=await db.query('SELECT * FROM invoices WHERE order_key=%s',('new:'+row['id'],),shared=True,one=True)
             if not invoice: raise ValueError('付款账单缺失，请管理员核对，勿自行转账')
-            fee=None
-            try:
-                network=await payments.withdrawal_network()
-                fee=Decimal(str(network['withdrawFee']))
-            except Exception:
-                log.warning('Cannot quote incoming transfer fee hint for order %s',row['id'])
-            embed=trade_payment_ui.payment_embed(row,invoice,fee)
+            embed=trade_payment_ui.payment_embed(row,invoice)
             qr_file=trade_payment_ui.qr_file(invoice['address'])
         key='trade_panel:'+row['id']
         previous=await db.setting(key)
@@ -278,7 +273,7 @@ class NewTrading(commands.Cog):
                         await cur.execute('INSERT INTO balances(user_id) VALUES(%s) ON DUPLICATE KEY UPDATE user_id=user_id',(uid,))
                         await cur.execute('SELECT user_id FROM balances WHERE user_id=%s FOR UPDATE',(uid,))
                         await cur.fetchone()
-                        await cur.execute("SELECT COUNT(*) AS n FROM orders WHERE (buyer_id=%s OR seller_id=%s) AND status NOT IN ('completed','cancelled','refunded','test_closed')",(uid,uid))
+                        await cur.execute("SELECT COUNT(*) AS n FROM orders WHERE (buyer_id=%s OR seller_id=%s) AND status NOT IN ('completed','cancelled','refunded','test_closed','manual_refunded')",(uid,uid))
                         if (await cur.fetchone())['n']>=cfg.MAX_ACTIVE: raise ValueError('交易参与者已达到同时进行的订单上限')
                     await cur.execute('INSERT INTO orders(id,buyer_id,seller_id,initiator_id,source_id,item,terms,amount,fee) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s)',
                                       (ident,buyer,seller,user.id,source,item.value,terms.value or '',value,cfg.FEE))
@@ -384,6 +379,8 @@ class NewTrading(commands.Cog):
     async def on_interaction(self,inter):
         custom=(inter.data or {}).get('custom_id','')
         if not inter.guild or inter.guild.id!=cfg.GUILD_ID: return
+        if custom.startswith('new:refund_close:'):
+            return await self.refund_close_response(inter,custom)
         if custom.startswith('new:forum:'):
             thread=inter.channel
             if not isinstance(thread,discord.Thread) or str(thread.id)!=custom.split(':')[-1] or thread.parent_id not in cfg.FORUM_IDS: return
@@ -408,7 +405,10 @@ class NewTrading(commands.Cog):
             invoice=await db.query('SELECT * FROM invoices WHERE order_key=%s',('new:'+ident,),shared=True,one=True)
             if not invoice or invoice['state']!='waiting' or time.time()>=trade_payment_ui.deadline(invoice):
                 return await inter.followup.send('账单已过期或付款已识别，请勿继续转账；已付款请联系管理员核对。',ephemeral=True)
-            return await inter.followup.send(trade_payment_ui.copy_text(invoice),ephemeral=True,allowed_mentions=discord.AllowedMentions.none())
+            fee=None
+            try: fee=Decimal(str((await payments.withdrawal_network())['withdrawFee']))
+            except Exception: log.warning('Payment instruction fee query unavailable: %s',ident)
+            return await inter.followup.send(trade_payment_ui.payment_instructions(invoice,fee),ephemeral=True,allowed_mentions=discord.AllowedMentions.none())
         if action=='collect':
             payee=row['buyer_id'] if row['status']=='refund_ready' else row['seller_id']
             if inter.user.id!=payee or row['status'] not in ('receipt_confirmed','refund_ready'):
@@ -622,7 +622,7 @@ class NewTrading(commands.Cog):
                 await db.query('UPDATE tracked_channels SET closed_at=UTC_TIMESTAMP() WHERE channel_id=%s',(channel.id,))
 
     async def repair_trade_access(self,guild):
-        rows=await db.query("SELECT o.* FROM orders o JOIN tracked_channels c ON c.channel_id=o.channel_id WHERE c.kind='trade' AND o.status NOT IN ('completed','cancelled','refunded','test_closed')")
+        rows=await db.query("SELECT o.* FROM orders o JOIN tracked_channels c ON c.channel_id=o.channel_id WHERE c.kind='trade' AND o.status NOT IN ('completed','cancelled','refunded','test_closed','manual_refunded')")
         complete=True
         for row in rows:
             try:
@@ -651,6 +651,7 @@ class NewTrading(commands.Cog):
             if not guild: return
             await self.retry_forums(guild)
             if not self.access_ready: await self.repair_trade_access(guild)
+            await self.manual_close_worker()
             if not cfg.PAYMENTS_ENABLED: return
             finished=await db.query("SELECT o.* FROM orders o JOIN tracked_channels c ON c.channel_id=o.channel_id WHERE o.status IN ('completed','cancelled','refunded','test_closed') AND c.hold=FALSE AND o.closed_at<UTC_TIMESTAMP()-INTERVAL 5 MINUTE")
             for done in finished:
@@ -670,6 +671,7 @@ class NewTrading(commands.Cog):
                     elif row['status'] in ('paying','payment_review'):
                         inv=await db.query('SELECT * FROM invoices WHERE order_key=%s',(key,),shared=True,one=True)
                         if not inv: continue
+                        if inv['state']=='manual_refunded': continue
                         txid=await payments.find_deposit(key,inv['address'],inv['amount'])
                         if txid:
                             deposit=await db.query('SELECT payload FROM deposits WHERE order_key=%s',(key,),shared=True,one=True)
@@ -684,7 +686,8 @@ class NewTrading(commands.Cog):
                             if row['status']=='payment_review':
                                 tracked=await db.query('SELECT hold FROM tracked_channels WHERE channel_id=%s',(row['channel_id'],),one=True)
                                 if tracked and not tracked['hold']:
-                                    await db.query('UPDATE tracked_channels SET hold=TRUE WHERE channel_id=%s',(row['channel_id'],))
+                                    changed=await db.query("UPDATE tracked_channels SET hold=TRUE WHERE channel_id=%s AND EXISTS (SELECT 1 FROM orders WHERE id=%s AND status='payment_review')",(row['channel_id'],row['id']))
+                                    if not changed: continue
                                     await db.audit(self.bot.user.id,'late_payment_hold',{},row['id'])
                                     await self.alert('超时订单已找到到账记录，已取消频道自动关闭，请核实：'+row['id'])
                                     await self.post(row,'已找到到账记录，自动关闭已取消，请等待管理员核实。')
@@ -729,52 +732,151 @@ class NewTrading(commands.Cog):
     @worker.before_loop
     async def before_worker(self): await self.bot.wait_until_ready()
 
-    @discord.slash_command(name='new_trade_review',description='处理争议或异常订单（需二次确认）')
+    @discord.slash_command(name='new_trade_review',description='核对异常订单，生成一次性指令确认码')
     async def review(self,ctx,order_id:str,decision:discord.Option(str,choices=['记录意见','继续履约','允许卖家收款','退还买家','无到账关闭']),reason:str):
         if not ctx.guild or ctx.guild.id!=cfg.GUILD_ID or not admin(ctx.author,cfg.TRADE_ADMIN_ROLES):
             return await ctx.respond('没有操作权限。',ephemeral=True)
-        row=await self.order(order_id)
-        if not row: return await ctx.respond('订单不存在。',ephemeral=True)
-        if not reason.strip(): return await ctx.respond('必须填写原因。',ephemeral=True)
-        if decision=='记录意见':
-            await db.audit(ctx.author.id,'review_decision',{'decision':decision,'reason':reason,'status':row['status']},order_id)
-            return await ctx.respond('意见已保存。',ephemeral=True)
-        view=discord.ui.View(timeout=180)
-        button=discord.ui.Button(label='确认处理此订单',emoji='⚖️',style=discord.ButtonStyle.danger)
-        async def accepted(inter):
-            if inter.user.id!=ctx.author.id or not admin(inter.user,cfg.TRADE_ADMIN_ROLES): return
-            await inter.response.defer(ephemeral=True)
-            try:
-                fresh=await self.order(order_id)
-                if fresh['status'] not in ('disputed','payment_review'):
-                    raise ValueError('仅能处理争议或待核对订单；正在放款的订单不能改判')
-                inv=await db.query('SELECT * FROM invoices WHERE order_key=%s',('new:'+order_id,),shared=True,one=True)
-                if inv:
-                    await payments.find_deposit('new:'+order_id,inv['address'],inv['amount'])
-                deposit=await db.query('SELECT amount FROM deposits WHERE order_key=%s',('new:'+order_id,),shared=True,one=True)
-                if decision=='无到账关闭' and deposit: raise ValueError('已找到到账记录，不能作为无到账订单关闭')
-                if decision!='无到账关闭' and not deposit: raise ValueError('没有已核对的到账记录，禁止放款或退款')
-                target={'继续履约':'paid','允许卖家收款':'receipt_confirmed','退还买家':'refund_ready','无到账关闭':'cancelled'}[decision]
+        await ctx.defer(ephemeral=True)
+        try:
+            row=await self.order(order_id)
+            if not row: raise ValueError('订单不存在')
+            if not reason.strip() or len(reason)>500: raise ValueError('原因必须为 1–500 字')
+            if decision=='记录意见':
                 async with db.transaction() as cur:
-                    await cur.execute('UPDATE orders SET status=%s WHERE id=%s AND status=%s',(target,order_id,fresh['status']))
-                    if cur.rowcount!=1: raise ValueError('订单状态已变化')
-                    credit=fresh['credits']
-                    if fresh['status']=='payment_review':
-                        await cur.execute('UPDATE balances SET reserved=reserved-%s WHERE user_id=%s AND reserved>=%s',(credit,fresh['buyer_id'],credit))
-                    if decision in ('退还买家','无到账关闭'):
-                        await cur.execute('UPDATE balances SET available=available+%s WHERE user_id=%s',(credit,fresh['buyer_id']))
-                    await cur.execute('INSERT INTO audit(actor_id,action,details,order_id) VALUES(%s,%s,%s,%s)',(inter.user.id,'review_decision',db.encode({'decision':decision,'reason':reason,'from':fresh['status']}),order_id))
-                    if target=='cancelled':
-                        await cur.execute('UPDATE orders SET closed_at=UTC_TIMESTAMP() WHERE id=%s',(order_id,))
-                        await cur.execute('UPDATE tracked_channels SET closed_at=UTC_TIMESTAMP(),hold=FALSE WHERE channel_id=%s',(fresh['channel_id'],))
-                await self.post(await self.order(order_id))
-                await inter.followup.send('处理决定已保存。需要收款或退款时，由对应交易方确认地址后提交。',ephemeral=True)
-            except Exception as exc:
-                log.exception('Review settlement failed')
-                await inter.followup.send(str(exc) if isinstance(exc,ValueError) else '核对失败，请勿重复处理。',ephemeral=True)
-        button.callback=accepted
-        view.add_item(button)
-        await ctx.respond(f'订单 {order_id}\n决定：{decision}\n原因：{reason}\n退款将退还已认领入款，网络费由退款领取方承担。',view=view,ephemeral=True)
+                    await cur.execute('SELECT status FROM orders WHERE id=%s FOR UPDATE',(order_id,))
+                    current=await cur.fetchone()
+                    await cur.execute('INSERT INTO audit(actor_id,action,details,order_id) VALUES(%s,%s,%s,%s)',
+                        (ctx.author.id,'review_decision',db.encode({'decision':decision,'reason':reason,'status':current['status']}),order_id))
+                log.warning('Administrator opinion: actor=%s order=%s reason=%s',ctx.author.id,order_id,reason)
+                return await ctx.followup.send('意见已保存，未改变订单或频道关闭状态。',ephemeral=True)
+            inv=await db.query('SELECT * FROM invoices WHERE order_key=%s',('new:'+order_id,),shared=True,one=True)
+            if inv: await payments.find_deposit('new:'+order_id,inv['address'],inv['amount'])
+            data=await trade_review.prepare(order_id,ctx.author.id,decision,reason)
+            await ctx.followup.send(f"订单 {order_id}\n决定：{decision}\n原因：{reason}\n金额错误仅能核实后手动退款；无到账关闭表示你已核实确实未收到任何付款，不能只凭 bot 未匹配。\n确认码 5 分钟有效：\n`/new_trade_confirm order_id:{order_id} code:{data['code']}`",ephemeral=True,allowed_mentions=discord.AllowedMentions.none())
+        except ValueError as exc: await ctx.followup.send(str(exc),ephemeral=True)
+        except Exception:
+            log.exception('Review preview failed')
+            await ctx.followup.send('无法生成预览，请稍后核对。',ephemeral=True)
+
+    @discord.slash_command(name='new_trade_manual_refund',description='登记本账户已完成的外部 BSC 手动退款（不会转账）')
+    async def manual_refund(self,ctx,order_id:str,deposit_txid:str,withdrawal_id:str,refund_address:str,reason:str):
+        if not ctx.guild or ctx.guild.id!=cfg.GUILD_ID or not admin(ctx.author,cfg.TRADE_ADMIN_ROLES):
+            return await ctx.respond('没有操作权限。',ephemeral=True)
+        await ctx.defer(ephemeral=True)
+        try:
+            verified=await trade_review.verify_manual(order_id,deposit_txid.strip(),withdrawal_id.strip(),refund_address.strip())
+            data=await trade_review.prepare(order_id,ctx.author.id,'登记手动退款',reason,
+                {'deposit_txid':deposit_txid.strip(),'withdrawal_id':withdrawal_id.strip(),'address':refund_address.strip(),'evidence':verified})
+            await ctx.followup.send(f"仅登记已发生的手动退款，不会转账。\n订单 {order_id}\n原入款 {verified['received']} USDT\n网络费 {verified['fee']} USDT\n退款到账 {verified['net']} USDT\n地址 `{verified['address']}`\n原因：{reason}\n确认表示你已核实该入款属于本订单买家，且退款地址已与买家核对。流水存在本身不证明归属。\n确认码 5 分钟有效：\n`/new_trade_confirm order_id:{order_id} code:{data['code']}`",ephemeral=True,allowed_mentions=discord.AllowedMentions.none())
+        except ValueError as exc: await ctx.followup.send(str(exc),ephemeral=True)
+        except Exception:
+            log.exception('Manual refund preview failed')
+            await ctx.followup.send('流水核对失败，频道继续保留；未登记退款成功。',ephemeral=True)
+
+    @discord.slash_command(name='new_trade_confirm',description='通过一次性确认码执行已预览的处理决定')
+    async def confirm_review(self,ctx,order_id:str,code:str):
+        if not ctx.guild or ctx.guild.id!=cfg.GUILD_ID or not admin(ctx.author,cfg.TRADE_ADMIN_ROLES):
+            return await ctx.respond('没有操作权限。',ephemeral=True)
+        await ctx.defer(ephemeral=True)
+        try:
+            target=await trade_review.confirm(order_id,ctx.author.id,code.strip())
+        except ValueError as exc: return await ctx.followup.send(str(exc),ephemeral=True)
+        except Exception:
+            log.exception('Command settlement failed: %s',order_id)
+            return await ctx.followup.send('处理结果需核对，请查看订单状态，勿重复退款。',ephemeral=True)
+        log.warning('Administrator settlement: actor=%s order=%s target=%s',ctx.author.id,order_id,target)
+        try:
+            if target=='manual_refunded': await self.manual_close_tick(order_id)
+            else: await self.post(await self.order(order_id))
+            await self.alert(f'管理员 {ctx.author.id} 已处理订单 {order_id}：{target}')
+        except Exception: log.exception('Settlement saved; notification failed: %s',order_id)
+        await ctx.followup.send('处理已记录。手动退款只登记账本，不会再次转账；频道关闭通知会自动重试。' if target=='manual_refunded' else '处理决定已记录，请查看订单当前步骤。',ephemeral=True)
+
+    @discord.slash_command(name='new_trade_channel',description='手动退款后暂停关闭或重新发起用户关闭确认')
+    async def manage_refund_channel(self,ctx,order_id:str,action:discord.Option(str,choices=['暂停关闭','重新通知关闭']),reason:str):
+        if not ctx.guild or ctx.guild.id!=cfg.GUILD_ID or not admin(ctx.author,cfg.TRADE_ADMIN_ROLES):
+            return await ctx.respond('没有操作权限。',ephemeral=True)
+        await ctx.defer(ephemeral=True)
+        try:
+            if not reason.strip() or len(reason)>500: raise ValueError('原因必须为 1–500 字')
+            async with self.cleanup_lock:
+                row=await self.order(order_id)
+                state=await db.setting('manual_close:'+order_id)
+                if not row or row['status']!='manual_refunded' or not state or state['phase']=='deleted':
+                    raise ValueError('只支持尚未删除频道的已登记手动退款订单')
+                if action=='暂停关闭':
+                    state['phase']='held'
+                else:
+                    if state['phase']!='held': raise ValueError('已经通知或正在通知，不能重复重置倒计时')
+                    state.update(phase='unnotified',generation=uuid.uuid4().hex[:8])
+                    state.pop('deadline',None)
+                await self.save_manual_close(row,state,True,ctx.author.id,'manual_channel_control',{'action':action,'reason':reason})
+            if action=='重新通知关闭': await self.manual_close_tick(order_id)
+            log.warning('Manual channel control: actor=%s order=%s action=%s reason=%s',ctx.author.id,order_id,action,reason)
+            await ctx.followup.send('已保留频道。' if action=='暂停关闭' else '已重新安排关闭通知；成功发送后计时 30 分钟。',ephemeral=True)
+        except ValueError as exc: await ctx.followup.send(str(exc),ephemeral=True)
+        except Exception:
+            log.exception('Manual channel control failed')
+            await ctx.followup.send('操作结果需核对，频道状态以持久记录为准。',ephemeral=True)
+
+    async def save_manual_close(self,row,state,hold,actor,action,details):
+        # Commit the timer, retention flag and audit together, or none of them.
+        async with db.transaction() as cur:
+            await cur.execute('UPDATE settings SET value=%s WHERE setting_key=%s',(db.encode(state),'manual_close:'+row['id']))
+            await cur.execute('UPDATE tracked_channels SET hold=%s WHERE channel_id=%s',(hold,row['channel_id']))
+            await cur.execute('INSERT INTO audit(actor_id,action,details,order_id) VALUES(%s,%s,%s,%s)',(actor,action,db.encode(details),row['id']))
+
+    async def manual_close_worker(self):
+        rows=await db.query("SELECT o.id FROM orders o JOIN settings s ON s.setting_key=CONCAT('manual_close:',o.id) WHERE o.status='manual_refunded' AND JSON_UNQUOTE(JSON_EXTRACT(s.value,'$.phase')) IN ('unnotified','waiting','accepted')")
+        for row in rows:
+            try: await self.manual_close_tick(row['id'])
+            except Exception: log.exception('Manual refund channel recovery failed: %s',row['id'])
+
+    async def manual_close_tick(self,ident):
+        async with self.cleanup_lock:
+            row=await self.order(ident)
+            state=await db.setting('manual_close:'+ident)
+            if not row or row['status']!='manual_refunded' or not state or state['phase'] in ('held','deleted'): return
+            channel=self.bot.get_channel(row['channel_id'])
+            if not channel or channel.guild.id!=cfg.GUILD_ID: return
+            if state['phase']=='unnotified':
+                details=state['details']; deadline=int(time.time()+1800)
+                view=discord.ui.View(timeout=None)
+                for label,action,emoji in [('确认关闭','accept','✅'),('尚有问题／暂不关闭','hold','🆘')]:
+                    view.add_item(discord.ui.Button(label=label,emoji=emoji,custom_id=f"new:refund_close:{action}:{ident}:{state['generation']}"))
+                message=await channel.send(f"<@{row['buyer_id']}> <@{row['seller_id']}>，管理员已核实手动退款完成。\n退款到账：**{details['net']} USDT**　网络费：**{details['fee']} USDT**\n退款地址：`{details['address']}`\n退款凭证：`{details['withdrawal']['txId']}`\n买家可确认关闭，或选择「尚有问题／暂不关闭」。30 分钟无回应则自动关闭（<t:{deadline}:f>，<t:{deadline}:R>）。未收到退款请申请保留。",
+                    view=view,allowed_mentions=discord.AllowedMentions(users=[discord.Object(id=row['buyer_id']),discord.Object(id=row['seller_id'])],roles=False,everyone=False))
+                state.update(phase='waiting',deadline=time.time()+1800,message=message.id)
+                await self.save_manual_close(row,state,False,self.bot.user.id,'manual_close_notified',{'deadline':state['deadline'],'message':message.id})
+                return
+            if state['phase'] not in ('waiting','accepted'): return
+            if state['phase']=='waiting' and time.time()<state['deadline']: return
+            tracked=await db.query('SELECT hold FROM tracked_channels WHERE channel_id=%s',(row['channel_id'],),one=True)
+            if not tracked or tracked['hold']: return
+            await db.audit(self.bot.user.id,'manual_channel_cleanup',{'phase':state['phase'],'channel':channel.id},ident)
+            try: await channel.delete(reason='Verified manual refund; user confirmed or 30 minute silence')
+            except discord.NotFound: pass
+            state['phase']='deleted'
+            await db.setting('manual_close:'+ident,state)
+            await db.query('UPDATE tracked_channels SET closed_at=UTC_TIMESTAMP(),hold=FALSE WHERE channel_id=%s',(row['channel_id'],))
+
+    async def refund_close_response(self,inter,custom):
+        await inter.response.defer(ephemeral=True)
+        parts=custom.split(':')
+        if len(parts)!=5: return
+        _,_,action,ident,generation=parts
+        if action not in ('accept','hold'): return
+        async with self.cleanup_lock:
+            row=await self.order(ident); state=await db.setting('manual_close:'+ident)
+            if not row or row['status']!='manual_refunded' or inter.channel_id!=row['channel_id'] or inter.user.id!=row['buyer_id']:
+                return await inter.followup.send('仅本订单退款接收人（买家）可确认。',ephemeral=True)
+            if not state or state['generation']!=generation or state['phase']!='waiting':
+                return await inter.followup.send('此关闭通知已处理或已失效，请查看最新通知。',ephemeral=True)
+            state['phase']='accepted' if action=='accept' else 'held'
+            await self.save_manual_close(row,state,action=='hold',inter.user.id,'manual_close_response',{'action':action,'generation':generation})
+        await inter.followup.send('已确认，即将关闭频道。' if action=='accept' else '已取消倒计时并保留频道，管理员将继续核实。',ephemeral=True)
+        if action=='accept': await self.manual_close_tick(ident)
+        else: await self.alert('手动退款后用户仍有问题，已保留频道：'+ident,notify_admins=True,fallback=inter.channel)
 
     @discord.slash_command(name='new_trade_close_test',description='本人测试资金留存担保账户并结清订单（不转账）')
     async def close_test(self,ctx,order_id:str,reason:str):

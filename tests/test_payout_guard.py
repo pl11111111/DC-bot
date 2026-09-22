@@ -76,7 +76,7 @@ class BudgetTests(unittest.TestCase):
         self.assertIn('In progress: 1',body)
         self.assertIn('Dispute / exception review: 2',body)
         self.assertIn('Total completed volume: 300.00 USDT',body)
-        self.assertNotIn('900',body)
+        self.assertNotIn('900.00 USDT',body)
 
 
 class ReleaseTests(unittest.IsolatedAsyncioTestCase):

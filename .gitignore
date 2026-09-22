@@ -39,7 +39,8 @@ logs/
 *.db
 *.sqlite
 *.sqlite3
-.test-mysql/
+.test-mysql*/
+test-mysql-review-*/
 
 # =========================
 # Credentials / secrets

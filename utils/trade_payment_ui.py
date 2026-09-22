@@ -28,29 +28,29 @@ def qr_file(address):
 def payment_embed(row,invoice,fee=None):
     amount=Decimal(str(invoice['amount']))
     stamp=deadline(invoice)
-    embed=discord.Embed(title=f'实际应到账：{amount:.6f} USDT',
-        description=(f'**由买家付款。卖家仅查看进度，请等待系统确认到账，暂勿发货或代付。**\n\n'
-                     f'**必须实际到账 {amount:.6f} USDT，所有小数位都要保留。**\n'
-                     '小数尾数用于识别本订单。请勿只付整数、只付商品价、保留两位小数或四舍五入。\n'
-                     '**先点击「复制付款信息」，再核对付款页面的实际到账金额，完全一致后才转账。**\n\n'
-                     '**已付错金额或已付款未识别：不要重复付款、不要自行补差额，点击下方「付款有问题／呼叫管理员」。**\n\n'
-                     '**网络：USDT · BSC / BEP20**\n请勿使用其他币种或网络。\n\n'
-                     '下方二维码仅包含收款地址。扫码后，请核对币种、网络和付款金额。'),color=0x9854DE)
+    embed=discord.Embed(title=f'{amount:.6f} USDT',
+        description='**网络：BSC / BEP20 · USDT**',color=0x9854DE)
+    embed.add_field(name='链上必须实际到账',value=f'```\n{amount:.6f}\n```',inline=False)
     embed.add_field(name='收款地址',value=f"```\n{invoice['address']}\n```",inline=False)
-    hint=f'请以提现页面的 **“实际到账金额”** 为准，必须等于 **{amount:.6f} USDT**。'
-    if fee is not None:
-        fee=Decimal(str(fee))
-        hint+=f'\n\n仅当币安从填写金额中扣除 **{fee:f} USDT** 时，请填写 **{amount+fee:.6f} USDT**。'
-        hint+=f'\n\n若页面显示的实际到账已是 **{amount:.6f} USDT**，**请勿再次加 {fee:f}**。'
-    else:
-        hint+='\n\n请核对付款平台的实际到账金额，转出手续费由买家承担。\n\n若到账金额已等于上方金额，**请勿重复加手续费**。'
-    hint+='\n\n其他交易所的费用可能不同，请按该平台的实际费用核对**实际到账金额**。'
-    embed.add_field(name='🏦 使用币安或其他交易所提现',value=hint,inline=False)
-    embed.add_field(name='binance邀请链接',value='https://www.bsmkweb.cc/register?ref=1024490102',inline=False)
-    embed.add_field(name='邀请码',value='```\n1024490102\n```',inline=False)
-    embed.add_field(name='⏳ 付款截止',value=f'<t:{stamp}:f>（<t:{stamp}:R>）\n\n过期请勿转账；已付款请勿重复支付。金额错误或未识别到账，请点击「付款有问题／呼叫管理员」。呼叫后会保留频道并暂停自动履约，管理员核实后处理；不会自动退款。',inline=False)
+    embed.add_field(name='付款截止',value=f'<t:{stamp}:f>（<t:{stamp}:R>）\n\n付错金额或到账未识别？请呼叫管理员，**不要重复付款或自行补差额**。',inline=False)
     embed.set_footer(text='订单 '+row['id'])
     return embed
+
+
+def payment_instructions(invoice,fee=None):
+    amount=Decimal(str(invoice['amount']))
+    hint=f'最终的**实际到账金额**必须为 **{amount:.6f} USDT**。'
+    if fee is not None:
+        fee=Decimal(str(fee))
+        hint+=f'\n\n仅当币安从填写金额扣除 **{fee:f} USDT** 时，填写 **{amount+fee:.6f} USDT**。'
+    hint+='\n\n若页面显示的到账金额已正确，**不要再次加手续费**。其他平台按其实际费用核对。'
+    if fee is None: hint+='当前无法查询费用，请按提现页面核对最终到账金额。'
+    return (f'### 钱包转账\n发送 **{amount:.6f} USDT**，普通 BSC 钱包的网络费另用 BNB 支付。请核对网络和金额。\n\n'
+            f'### 币安或其他交易所提现\n{hint}\n\n'
+            '### 为什么不能省略小数？\n小数尾数用于识别订单。请勿只付整数、商品价或保留两位小数；金额不一致可能无法自动识别。\n\n'
+            '### 已付错或未识别\n点击「呼叫管理员」，在交易频道提供实际金额、交易哈希和付款截图。请勿重复付款或自行补差额。金额错误只能由管理员核实入款后手动退款；不收服务费，网络费从退款中扣除并告知。\n\n'
+            '过期请勿转账；二维码仅包含地址，扫码后仍须核对网络和金额。\n\n'
+            '### 邀请信息\nhttps://www.bsmkweb.cc/register?ref=1024490102\n邀请码：`1024490102`')
 
 
 def copy_text(invoice):
