@@ -133,7 +133,7 @@ class ConfirmationTransactionTests(unittest.IsolatedAsyncioTestCase):
         verified=r.evidence(i,d,w,RETURN)
         pending={'actor':99,'decision':'登记手动退款','reason':'verified owner and address','status':'payment_review','revision':0,'expires':time.time()+100,'code':'1234','manual':{'deposit_txid':'tx1','withdrawal_id':'w1','address':RETURN,'evidence':verified}}
         row={'status':'payment_review','credits':D(2),'buyer_id':1,'channel_id':8}
-        responses=[{'value':''},payout,row,{'value':json.dumps(pending)},{'revision':revision},i,stored_deposit,claimed,conflict,withdraw_used,None]
+        responses=[{'value':''},payout,row,{'value':json.dumps(pending)},{'revision':revision},i,stored_deposit,claimed,conflict,withdraw_used,None,None]
         cursor=NS(execute=AsyncMock(),fetchone=AsyncMock(side_effect=responses),rowcount=1)
         outcome=[]
         @asynccontextmanager

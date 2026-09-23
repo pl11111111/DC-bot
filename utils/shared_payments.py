@@ -1,5 +1,5 @@
 """Account-wide durable claims. Unknown withdrawal results are NEVER resubmitted."""
-from decimal import Decimal, ROUND_DOWN
+from decimal import Decimal, ROUND_DOWN, ROUND_UP
 from datetime import datetime, timedelta
 import hashlib
 import secrets
@@ -94,19 +94,30 @@ async def find_deposit(key, address, expected):
         return existing['txid']
     # Includes expired invoices for reconciliation, but never remaps their funds.
     start = int(inv['created_at'].replace(tzinfo=__import__('datetime').timezone.utc).timestamp()*1000)
-    deposits = await make_api_request('/sapi/v1/capital/deposit/hisrec', 'GET',
-        {'coin':'USDT','startTime':start,'limit':1000})
-    if not isinstance(deposits, list):
-        return None
+    end=int(__import__('time').time()*1000)
+    if end-start>=89*86400000:
+        raise ValueError('账单超出自动到账核对窗口，请管理员单独核实；未结束订单将保留')
+    deposits=[]
+    for offset in range(0,10000,1000):
+        page=await make_api_request('/sapi/v1/capital/deposit/hisrec','GET',
+            {'coin':'USDT','startTime':start,'endTime':end,'limit':1000,'offset':offset})
+        if not isinstance(page,list) or any(not isinstance(item,dict) for item in page):
+            raise ValueError('到账查询失败，本次不能判定未付款，请稍后重试')
+        deposits.extend(page)
+        if len(page)<1000: break
+    else:
+        raise ValueError('到账记录未完整查询，暂停自动结案，请管理员核对')
     for item in deposits:
-        if (item.get('coin') != 'USDT' or item.get('network') != 'BSC' or item.get('status') != 1
-                or item.get('address') != address or Decimal(str(item.get('amount',0))) != Decimal(str(expected))):
+        if (item.get('coin') != 'USDT' or item.get('network') != 'BSC'
+                or str(item.get('address','')).lower() != address.lower()
+                or Decimal(str(item.get('amount',0))) != Decimal(str(expected))):
             continue
-        # Provider deposit ID identifies an individual credit (tx hashes alone need not).
+        if item.get('status')!=1:
+            raise ValueError('发现匹配金额的未完成或异常入款，请保留订单等待核实')
         identity = item.get('id')
         txid = item.get('txId')
         if not identity or not txid:
-            continue
+            raise ValueError('匹配入款缺少流水标识，暂停自动结案')
         async with db.transaction(True) as cur:
             await cur.execute('SELECT * FROM invoices WHERE order_key=%s FOR UPDATE', (key,))
             locked = await cur.fetchone()
@@ -115,7 +126,7 @@ async def find_deposit(key, address, expected):
                 return (await cur.fetchone())['txid']
             await cur.execute('SELECT order_key FROM deposits WHERE id=%s', (str(identity),))
             if await cur.fetchone():
-                continue
+                raise ValueError('匹配入款已关联其他订单，请管理员核对')
             await cur.execute('INSERT INTO deposits(id,order_key,txid,amount,payload) VALUES(%s,%s,%s,%s,%s)',
                               (str(identity),key,txid,expected,db.encode(item)))
             deadline=int(locked['expires_at'].replace(tzinfo=__import__('datetime').timezone.utc).timestamp()*1000)
@@ -137,7 +148,8 @@ async def payout_amount_quote(gross):
     step = Decimal(str(network.get('withdrawIntegerMultiple') or '0.000001'))
     net = ((gross-fee)/step).to_integral_value(rounding=ROUND_DOWN)*step
     if net < Decimal(str(network['withdrawMin'])) or net <= 0:
-        raise ValueError(f"商品价款扣除网络费后低于最低提现金额：网络费 {fee} USDT，最低到账 {network['withdrawMin']} USDT。请提高商品金额；已付款订单请联系管理员处理。")
+        minimum=((Decimal(str(network['withdrawMin']))/step).to_integral_value(rounding=ROUND_UP)*step+fee).quantize(Decimal('.01'),rounding=ROUND_UP)
+        raise ValueError(f"金额不足，当前最低需 {minimum:.2f} USDT。已付款请联系管理员。")
     return fee, net
 
 async def withdrawal_network():

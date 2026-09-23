@@ -31,7 +31,14 @@ class TradeAccessTests(unittest.IsolatedAsyncioTestCase):
             await cog.start(ctx,seller)
             modal=ctx.send_modal.await_args.args[0]
             self.assertFalse(modal.children[2].required)
-            for field,value in zip(modal.children,['Item','3.01','']): field._input_value=value
+            for low in ('3.01','5.00'):
+                for field,value in zip(modal.children,['Item',low,'']): field._input_value=value
+                rejected=NS(user=buyer,response=NS(defer=AsyncMock()),followup=NS(send=AsyncMock()))
+                await modal.callback(rejected)
+                self.assertEqual(rejected.followup.send.await_args.args[0],'商品金额不能低于 5.01 USDT。')
+                self.assertEqual(calls,[])
+                guild.create_text_channel.assert_not_awaited()
+            for field,value in zip(modal.children,['Item','5.01','']): field._input_value=value
             inter=NS(user=buyer,response=NS(defer=AsyncMock()),followup=NS(send=AsyncMock()))
             await modal.callback(inter)
         overwrites=guild.create_text_channel.await_args.kwargs['overwrites']

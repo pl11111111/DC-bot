@@ -79,6 +79,77 @@ async def main():
     await cog.manual_close_tick('manual1');channel.delete.assert_awaited_once()
     assert (await db.setting('manual_close:manual1'))['phase']=='deleted'
     print('PASS real database close timer, no reset, refusal hold, expiration')
+    from utils import trade_timeout as timeout
+    await order('expiry',103,'4.003333')
+    await db.query("UPDATE orders SET status='payment_timeout' WHERE id='expiry'")
+    await db.query('UPDATE tracked_channels SET hold=FALSE WHERE channel_id=103')
+    await db.query("UPDATE invoices SET expires_at=UTC_TIMESTAMP()-INTERVAL 10 MINUTE WHERE order_key='new:expiry'",shared=True)
+    await db.setting('timeout_close:expiry',{'deadline':0})
+    with patch('utils.binance_api.make_api_request',AsyncMock(return_value=None)):
+        try: await timeout.close_unpaid('expiry',99,'timeout',automatic=True)
+        except ValueError: pass
+        else: raise AssertionError('API failure closed order')
+    assert (await db.query("SELECT status FROM orders WHERE id='expiry'",one=True))['status']=='payment_timeout'
+    with patch('utils.binance_api.make_api_request',AsyncMock(return_value=[])):
+        await db.query('UPDATE tracked_channels SET hold=TRUE WHERE channel_id=103')
+        try: await timeout.close_unpaid('expiry',99,'timeout',automatic=True)
+        except ValueError: pass
+        else: raise AssertionError('held order expired')
+        await db.query('UPDATE tracked_channels SET hold=FALSE WHERE channel_id=103')
+        outcome=await asyncio.gather(timeout.close_unpaid('expiry',99,'timeout',automatic=True),timeout.close_unpaid('expiry',99,'timeout',automatic=True),return_exceptions=True)
+        assert outcome.count('expired')==1,outcome
+        assert sum(isinstance(x,ValueError) for x in outcome)==1,outcome
+    balance=await db.query('SELECT * FROM balances WHERE user_id=11',one=True)
+    assert balance['available']==4 and balance['reserved']==16,balance
+    assert (await db.query("SELECT status FROM orders WHERE id='expiry'",one=True))['status']=='expired'
+    print('PASS expiry commits once, releases credits, refuses API failure or hold')
+    inv=await db.query("SELECT * FROM invoices WHERE order_key='new:expiry'",shared=True,one=True)
+    late={**deposit,'id':'late','txId':'late-tx','amount':str(inv['amount']),'insertTime':int(datetime.now(timezone.utc).timestamp()*1000)}
+    with patch('utils.binance_api.make_api_request',AsyncMock(return_value=[late])):
+        assert await p.find_deposit('new:expiry',ADDRESS,inv['amount'])=='late-tx'
+    assert await timeout.reopen_late('expiry',99)
+    assert not await timeout.reopen_late('expiry',99)
+    assert (await db.query('SELECT hold FROM tracked_channels WHERE channel_id=103',one=True))['hold']
+    data=await r.prepare('expiry',99,'退还买家','late payment refund')
+    assert await r.confirm('expiry',99,data['code'])=='refund_ready'
+    balance=await db.query('SELECT * FROM balances WHERE user_id=11',one=True)
+    assert balance['available']==4 and balance['reserved']==16,balance
+    print('PASS late deposit reopens review, refund does not return credits twice')
+    await order('batch-unpaid',104,'6.004444')
+    await order('batch-funded',106,'6.006666')
+    funded={**late,'id':'funded','txId':'funded-tx','amount':'6.006666'}
+    with patch('utils.binance_api.make_api_request',AsyncMock(return_value=[funded])):
+        await p.find_deposit('new:batch-funded',ADDRESS,D('6.006666'))
+    await order('batch-payout',107,'6.007777')
+    await db.query("INSERT INTO payouts(order_key,request_id,address,gross,fee,net,state) VALUES('new:batch-payout','already-submitted',%s,6,.01,5.99,'unknown')",(RETURN,),shared=True)
+
+    with patch('utils.binance_api.make_api_request',AsyncMock(return_value=[])):
+        batch=await db.query("SELECT id FROM orders WHERE status='payment_review' ORDER BY created_at,id")
+        for entry in batch:
+            try: await timeout.close_unpaid(entry['id'],99,'administrator requested historical cleanup')
+            except ValueError: pass
+    assert (await db.query("SELECT status FROM orders WHERE id='batch-unpaid'",one=True))['status']=='cancelled'
+    assert (await db.query("SELECT status FROM orders WHERE id='manual1'",one=True))['status']=='manual_refunded'
+    assert (await db.query("SELECT status FROM orders WHERE id='expiry'",one=True))['status']=='refund_ready'
+    assert (await db.query("SELECT status FROM orders WHERE id='batch-funded'",one=True))['status']=='payment_review'
+    assert (await db.query("SELECT status FROM orders WHERE id='batch-payout'",one=True))['status']=='payment_review'
+    print('PASS authorized batch cancellation, funded and unknown-payout review orders skipped')
+    await order('late-continue',105,'4.005555')
+    await db.setting('closed_unpaid:late-continue',{'credits_released':True,'status':'expired'})
+    await db.query('UPDATE balances SET available=0 WHERE user_id=11')
+    late2={**late,'id':'late2','txId':'late-tx2','amount':'4.005555'}
+    with patch('utils.binance_api.make_api_request',AsyncMock(return_value=[late2])):
+        await p.find_deposit('new:late-continue',ADDRESS,D('4.005555'))
+    data=await r.prepare('late-continue',99,'继续履约','late payment approved')
+    try: await r.confirm('late-continue',99,data['code'])
+    except ValueError: pass
+    else: raise AssertionError('continued late discounted invoice without available credits')
+    assert (await db.query("SELECT status FROM orders WHERE id='late-continue'",one=True))['status']=='payment_review'
+    await db.query('UPDATE balances SET available=2 WHERE user_id=11')
+    assert await r.confirm('late-continue',99,data['code'])=='paid'
+    assert (await db.query('SELECT available FROM balances WHERE user_id=11',one=True))['available']==0
+    assert not (await db.setting('closed_unpaid:late-continue'))['credits_released']
+    print('PASS late fulfillment recharges returned credits, insufficient balance rolls back')
     for pool in db._pools.values(): pool.close()
     for pool in db._pools.values(): await pool.wait_closed()
     print('ALL MANUAL REFUND INTEGRATION CHECKS PASSED')

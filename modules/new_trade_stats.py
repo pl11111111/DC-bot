@@ -13,14 +13,14 @@ log=logging.getLogger(__name__)
 TZ=timezone(timedelta(hours=8))
 ACTIVE={
     'Awaiting confirmation':('pending',),
-    'Awaiting payment':('confirmed','invoicing','paying'),
+    'Awaiting payment':('confirmed','invoicing','paying','payment_timeout'),
     'Awaiting shipment':('paid',),
     'Awaiting receipt':('shipped',),
     'Awaiting seller payout':('receipt_confirmed','releasing'),
 }
 REFUND=('refund_ready','releasing_refund')
 REVIEW=('disputed','payment_review')
-TERMINAL=('completed','cancelled','refunded','test_closed','manual_refunded')
+TERMINAL=('completed','cancelled','refunded','test_closed','manual_refunded','expired')
 
 
 def render(rows,now):
@@ -38,6 +38,7 @@ def render(rows,now):
                   f"\nCompleted: {count(('completed',))}",f"Cancelled: {count(('cancelled',))}",
                   f"Refunded: {count(('refunded',))}",
                   f"Manual refunds: {count(('manual_refunded',))}",
+                  f"Payment expired: {count(('expired',))}",
                   f"Test orders settled: {count(('test_closed',))}",
                   f'\nCompleted today: {int(done.get("today_n") or 0)}',
                   f'Today\'s completed volume: {today:,.2f} USDT',

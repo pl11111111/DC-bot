@@ -18,7 +18,7 @@ def naive(value):
     return value.astimezone(timezone.utc).replace(tzinfo=None)
 
 # Manual refunds remain evidence-protected until their separate close flow finishes.
-ACTIVE_ORDER_SQL="(o.status NOT IN ('completed','cancelled','refunded','test_closed','manual_refunded') OR (o.status='manual_refunded' AND NOT EXISTS (SELECT 1 FROM settings mc WHERE mc.setting_key=CONCAT('manual_close:',o.id) AND JSON_UNQUOTE(JSON_EXTRACT(mc.value,'$.phase'))='deleted')))"
+ACTIVE_ORDER_SQL="(o.status NOT IN ('completed','cancelled','refunded','test_closed','manual_refunded','expired') OR (o.status='manual_refunded' AND NOT EXISTS (SELECT 1 FROM settings mc WHERE mc.setting_key=CONCAT('manual_close:',o.id) AND JSON_UNQUOTE(JSON_EXTRACT(mc.value,'$.phase'))='deleted')))"
 
 class NewMessageLog(commands.Cog):
     def __init__(self,bot):

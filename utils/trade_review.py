@@ -169,16 +169,31 @@ async def confirm(ident,actor,code):
                 raise ValueError('没有金额一致的已核对入款；金额错误只能核实后手动退款')
             target=TARGETS[decision]
         credit=row['credits']
-        if row['status']=='payment_review' and credit:
+        await cur.execute(f'SELECT value FROM `{name}`.settings WHERE setting_key=%s FOR UPDATE',('closed_unpaid:'+ident,))
+        released_record=await cur.fetchone()
+        released=json.loads(released_record['value']) if released_record else {}
+        credits_released=released.get('credits_released',False)
+        if credits_released and credit and target in ('paid','receipt_confirmed'):
+            # Expiry already returned the credit. Continuing a late-paid order must
+            # charge it again, or the original discounted invoice would be underfunded.
+            await cur.execute(f'UPDATE `{name}`.balances SET available=available-%s WHERE user_id=%s AND available>=%s',(credit,row['buyer_id'],credit))
+            if cur.rowcount!=1: raise ValueError('超时返还的积分已不足，不能继续履约，请核实后退款')
+            released['credits_released']=False
+            await cur.execute(f'UPDATE `{name}`.settings SET value=%s WHERE setting_key=%s',(db.encode(released),'closed_unpaid:'+ident))
+        if not credits_released and row['status']=='payment_review' and credit:
             await cur.execute(f'UPDATE `{name}`.balances SET reserved=reserved-%s WHERE user_id=%s AND reserved>=%s',(credit,row['buyer_id'],credit))
             if cur.rowcount!=1: raise ValueError('积分预留不一致，不能结案')
-        if target in ('refund_ready','cancelled','manual_refunded') and credit:
+        if not credits_released and target in ('refund_ready','cancelled','manual_refunded') and credit:
             await cur.execute(f'UPDATE `{name}`.balances SET available=available+%s WHERE user_id=%s',(credit,row['buyer_id']))
             if cur.rowcount!=1: raise ValueError('积分账户缺失')
         await cur.execute(f'UPDATE `{name}`.orders SET status=%s WHERE id=%s',(target,ident))
         if target in ('cancelled','manual_refunded'):
             await cur.execute(f'UPDATE `{name}`.orders SET closed_at=UTC_TIMESTAMP() WHERE id=%s',(ident,))
             await cur.execute(f'UPDATE `{name}`.tracked_channels SET closed_at=UTC_TIMESTAMP(),hold=%s WHERE channel_id=%s',(target=='manual_refunded',row['channel_id']))
+        if target=='cancelled' and invoice:
+            await cur.execute("UPDATE invoices SET state='expired' WHERE order_key=%s",(key,))
+            await cur.execute(f'INSERT INTO `{name}`.settings(setting_key,value) VALUES(%s,%s) ON DUPLICATE KEY UPDATE value=VALUES(value)',
+                ('closed_unpaid:'+ident,db.encode({'credits_released':True,'actor':actor,'reason':data['reason'],'status':'cancelled','time':time.time()})))
         if target=='manual_refunded':
             await cur.execute(f'INSERT INTO `{name}`.settings(setting_key,value) VALUES(%s,%s)',
                               ('manual_close:'+ident,db.encode({'phase':'unnotified','generation':secrets.token_hex(4),'details':verified})))

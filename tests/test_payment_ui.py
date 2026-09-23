@@ -56,9 +56,9 @@ class PaymentUiTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('**💰 价格** 3.01 USDT　｜　**🔒 托管费** 2 USDT',body)
         self.assertNotIn('付款时请以',body)
 
-    async def test_dynamic_minimum_rejects_three_accepts_three_point_zero_one(self):
-        response=[dict(coin='USDT',networkList=[dict(network='BSC',withdrawEnable=True,withdrawFee='.01',withdrawMin='3',withdrawIntegerMultiple='.00000001')])]
+    async def test_dynamic_minimum_rejects_five_accepts_five_point_zero_one(self):
+        response=[dict(coin='USDT',networkList=[dict(network='BSC',withdrawEnable=True,withdrawFee='.01',withdrawMin='5',withdrawIntegerMultiple='.00000001')])]
         with patch('utils.binance_api.make_api_request',AsyncMock(return_value=response)) as request:
-            with self.assertRaises(ValueError): await payments.payout_amount_quote(D('3'))
-            self.assertEqual(await payments.payout_amount_quote(D('3.01')),(D('.01'),D('3')))
+            with self.assertRaisesRegex(ValueError,'当前最低需 5.01 USDT'): await payments.payout_amount_quote(D('5'))
+            self.assertEqual(await payments.payout_amount_quote(D('5.01')),(D('.01'),D('5')))
             self.assertTrue(all(call.args[1]=='GET' for call in request.await_args_list))
