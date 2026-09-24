@@ -31,6 +31,16 @@ STEP_BANNERS={
     'completed':'receive payment.png',
 }
 
+def participant_notice(row,title,buyer_text=None,seller_text=None):
+    lines=[title]
+    users=[]
+    for field,label,text in (('buyer_id','🛒 买家',buyer_text),('seller_id','📦 卖家',seller_text)):
+        if text:
+            users.append(discord.Object(id=row[field]))
+            lines.append(f"{label} <@{row[field]}>：{text}")
+    return '\n\n'.join(lines),discord.AllowedMentions(users=users,roles=False,everyone=False)
+
+
 class OrderStateChanged(ValueError):
     pass
 
@@ -150,7 +160,7 @@ class NewTrading(commands.Cog):
         fee=Decimal(str(row['fee']))
         credits=Decimal(str(row.get('credits',0)))
         for name,value in [('📦 物品',row['item']),('💰 价格',amount(price)+' USDT'),
-                           ('🔒 托管费',amount(fee)+' USDT')]:
+                           ('🔒 担保费',amount(fee)+' USDT')]:
             embed.add_field(name=name,value=value,inline=name!='📦 物品')
         if credits:
             embed.add_field(name='🎟️ 积分抵扣',value=amount(credits)+' USDT',inline=False)
@@ -204,32 +214,32 @@ class NewTrading(commands.Cog):
                 log.warning('Could not retire prior order buttons: %s',row['id'])
 
     async def notify_step(self,channel,row):
-        buyer,seller=row['buyer_id'],row['seller_id']
-        both=[buyer,seller]
+        counterpart='请核对交易内容，并在 30 分钟内点击「确认交易」。'
+        waiting='请等待交易对方确认；未确认前请勿付款或发货。'
+        buyer_started=row.get('initiator_id',row['buyer_id'])==row['buyer_id']
         prompts={
-            'pending':(both,'交易频道已创建，请交易对方在 30 分钟内确认交易。'),
-            'expired':(both,'订单已超时结束，请勿继续转账；若已付款请联系管理员。'),
-            'confirmed':([buyer],'交易已确认，请点击「获取付款信息」查看本订单应到账金额。'),
-            'invoicing':(both,'正在生成付款信息，请买家等待账单，卖家暂勿发货。'),
-            'paying':(both,f'付款信息已展示。买家 <@{buyer}> 请按卡片精确付款；卖家 <@{seller}> 请等待系统确认买家到账，暂勿发货，也不要替买家付款。'),
-            'paid':(both,f'系统已确认买家付款。卖家 <@{seller}> 请交付商品，完成后点击「标记为已发货」；买家请等待收货。'),
-            'shipped':([buyer],'卖家已标记发货，请核对商品，实际收到后再点击「确认收货」。'),
-            'receipt_confirmed':([seller],'买家已确认收货，请点击「领取货款」核对收款地址和费用。'),
-            'releasing':([seller],'收款申请正在处理，请等待系统核对提现结果。'),
-            'completed':(both,'交易已完成，系统已确认货款转出。'),
-            'cancelled':(both,'交易已取消，请勿继续付款或发货。'),
-            'disputed':(both,'交易已进入争议处理，请保留证据，等待管理员核实。'),
-            'payment_review':(both,'付款需要核对，请勿重复支付或自行补差额，卖家暂勿发货。可点击「付款有问题／呼叫管理员」。'),
-            'refund_ready':([buyer],'退款已获准，请点击「领取退款」核对金额和退款地址。'),
-            'releasing_refund':([buyer],'退款申请正在处理，请等待系统核对结果。'),
-            'refunded':(both,'系统已确认退款转出。'),
-            'test_closed':(both,'管理员已记录本人测试资金留存结清，订单不再提供领取入口。'),
+            'pending':('交易频道已创建',waiting if buyer_started else counterpart,counterpart if buyer_started else waiting),
+            'confirmed':('交易已确认','请在 15 分钟内点击「获取付款信息」，查看本订单实际应到账金额。','请等待买家付款，系统确认到账前请勿发货。'),
+            'invoicing':('正在生成付款信息','请等待系统显示付款信息，暂勿转账。','请等待系统确认买家付款，暂勿发货。'),
+            'paying':('付款信息已展示','请按付款信息的完整金额精确付款。','**请等待 bot 显示「支付已确认」并发出发货通知后，再交付商品并继续交易步骤。**\n系统确认到账前，请勿发货，不要仅凭买家的付款截图或口头说明交付，也不要替买家付款。'),
+            'paid':('支付已确认','系统已确认付款，请等待卖家交付商品。','**系统已确认买家到账，现在可以交付商品。** 完成交付后，请点击「标记为已发货」。'),
+            'shipped':('卖家已发货','请核对商品，实际收到且确认无误后，再点击「确认收货」。如有问题，请发起争议。',None),
+            'receipt_confirmed':('买家已确认收货',None,'请点击「领取货款」，核对收款地址、网络费和预计到账金额。'),
+            'releasing':('货款处理中',None,'收款申请正在处理，请等待系统核对结果，无需重复申请。'),
+            'completed':('交易已完成','本订单已完成，感谢使用担保交易。','系统已确认货款转出，请核对收款记录。'),
+            'cancelled':('交易已取消','请勿继续付款；若已付款，请联系管理员核实。','请勿继续发货；若已交付，请联系管理员核实。'),
+            'expired':('订单已超时结束','请勿继续付款；若已付款，请联系管理员核实。','请勿发货，请等待管理员处理任何未解决的问题。'),
+            'disputed':('交易争议处理中','请保留付款及沟通记录，等待管理员核实。','请保留交付及沟通记录，等待管理员核实。'),
+            'payment_review':('付款待核对','请提供付款记录，等待管理员核实；不要重复付款或自行补差额。','系统尚未确认本订单可以继续履约，请勿发货，等待管理员处理。'),
+            'refund_ready':('退款已获准','请点击「领取退款」，核对退款地址、网络费和预计到账金额。',None),
+            'releasing_refund':('退款处理中','退款申请正在处理，请等待系统核对结果，无需重复申请。',None),
+            'refunded':('退款已完成','系统已确认退款转出，请核对收款记录。','本订单已退款结束，请勿继续发货。'),
+            'test_closed':('测试订单已结清','管理员已记录本人测试资金留存结清，无需再次付款。','测试资金留存在担保账户，本订单不再提供领取入口。'),
         }
         selected=prompts.get(row['status'])
-        if not selected: return
-        users,text=selected
-        await channel.send(' '.join(f'<@{uid}>' for uid in users)+'，'+text,
-            allowed_mentions=discord.AllowedMentions(users=[discord.Object(id=uid) for uid in users],roles=False,everyone=False))
+        if selected:
+            text,mentions=participant_notice(row,*selected)
+            await channel.send(text,allowed_mentions=mentions)
 
     async def current_step(self,inter,row):
         """Recover UI without repeating a state change, invoice, or withdrawal."""
@@ -542,9 +552,16 @@ class NewTrading(commands.Cog):
 
     async def retire_payout_confirmation(self,inter):
         if getattr(inter,'message',None):
-            try: await trade_card.retire(inter.message)
-            except discord.HTTPException:
-                log.warning('Could not retire payout confirmation buttons')
+            # Component callbacks defer with deferred_message_update. Their
+            # original response is the clicked ephemeral confirmation, which
+            # cannot be edited through the normal channel-message endpoint.
+            try: await inter.edit_original_response(view=None)
+            except discord.NotFound as exc:
+                log.info('Payout confirmation already unavailable: message=%s code=%s',
+                         getattr(inter.message,'id',None),exc.code)
+            except discord.HTTPException as exc:
+                log.warning('Could not retire payout confirmation buttons: message=%s status=%s code=%s',
+                            getattr(inter.message,'id',None),exc.status,exc.code)
 
     async def payout_progress(self,inter,ident):
         """Read-only recovery for a stale confirmation; never submit again."""
@@ -644,8 +661,10 @@ class NewTrading(commands.Cog):
             timer=await db.setting(key)
             if not timer:
                 await self.post(fresh,'付款已超时，请勿继续转账。频道将在约 5 分钟后关闭。\n如已付款或需要核对，请点击下方「已付款／取消关闭，请管理员核实」按钮。')
-                await channel.send(f"<@{row['buyer_id']}> <@{row['seller_id']}>，付款已超时，频道将在约 5 分钟后关闭。如已付款，请点击上方按钮取消关闭并请求管理员核实。",
-                                   allowed_mentions=discord.AllowedMentions(users=[discord.Object(id=row['buyer_id']),discord.Object(id=row['seller_id'])],roles=False,everyone=False))
+                text,mentions=participant_notice(row,'付款已超时，频道将在约 5 分钟后关闭。',
+                    '若已付款或需要核对，请点击「已付款／取消关闭，请管理员核实」。请勿继续转账。',
+                    '请勿发货；如需保留频道核实，请点击「已付款／取消关闭，请管理员核实」。')
+                await channel.send(text,allowed_mentions=mentions)
                 # Start only after both notices succeed; persist across restarts.
                 await db.setting(key,{'deadline':time.time()+300})
                 await db.audit(self.bot.user.id,'timeout_close_scheduled',{'channel':channel.id,'seconds':300},row['id'])
@@ -784,8 +803,16 @@ class NewTrading(commands.Cog):
                 if channel and time.time()>=timer['deadline']-300 and not timer.get('warned'):
                     # If the bot was offline at warning time, allow a full 5 minutes.
                     timer['deadline']=max(timer['deadline'],time.time()+300)
-                    await channel.send(f"<@{row['buyer_id']}> <@{row['seller_id']}>，订单尚未{'确认' if row['status']=='pending' else '获取付款信息'}，将在 <t:{int(timer['deadline'])}:R> 自动结束并关闭频道。请及时操作。",
-                        allowed_mentions=discord.AllowedMentions(users=[discord.Object(id=row['buyer_id']),discord.Object(id=row['seller_id'])],roles=False,everyone=False))
+                    if row['status']=='pending':
+                        action='请及时核对交易内容并点击「确认交易」。'
+                        wait='请等待交易对方确认，暂勿付款或发货。'
+                        buyer_started=row['initiator_id']==row['buyer_id']
+                        buyer_text,seller_text=(wait,action) if buyer_started else (action,wait)
+                    else:
+                        buyer_text='请及时点击「获取付款信息」，查看本订单应到账金额。'
+                        seller_text='请等待买家付款，系统确认到账前请勿发货。'
+                    text,mentions=participant_notice(row,f"订单将在 <t:{int(timer['deadline'])}:R> 自动结束并关闭频道。",buyer_text,seller_text)
+                    await channel.send(text,allowed_mentions=mentions)
                     timer['warned']=True
                     await db.setting(key,timer)
                 if time.time()<timer['deadline']: continue
@@ -1029,8 +1056,11 @@ class NewTrading(commands.Cog):
                 view=discord.ui.View(timeout=None)
                 for label,action,emoji in [('确认关闭','accept','✅'),('尚有问题／暂不关闭','hold','🆘')]:
                     view.add_item(discord.ui.Button(label=label,emoji=emoji,custom_id=f"new:refund_close:{action}:{ident}:{state['generation']}"))
-                message=await channel.send(f"<@{row['buyer_id']}> <@{row['seller_id']}>，管理员已核实手动退款完成。\n退款到账：**{details['net']} USDT**　网络费：**{details['fee']} USDT**\n退款地址：`{details['address']}`\n退款凭证：`{details['withdrawal']['txId']}`\n买家可确认关闭，或选择「尚有问题／暂不关闭」。30 分钟无回应则自动关闭（<t:{deadline}:f>，<t:{deadline}:R>）。未收到退款请申请保留。",
-                    view=view,allowed_mentions=discord.AllowedMentions(users=[discord.Object(id=row['buyer_id']),discord.Object(id=row['seller_id'])],roles=False,everyone=False))
+                text,mentions=participant_notice(row,'管理员已核实手动退款完成。',
+                    '请核对退款，可点击「确认关闭」；若未收到退款或仍有问题，请点击「尚有问题／暂不关闭」。',
+                    '本订单已登记退款，请勿继续发货；如有问题，请在频道内联系管理员。')
+                text+=f"\n\n💰 退款到账：**{details['net']} USDT**　网络费：**{details['fee']} USDT**\n退款地址：`{details['address']}`\n退款凭证：`{details['withdrawal']['txId']}`\n\n⏳ 买家 30 分钟无回应则自动关闭（<t:{deadline}:f>，<t:{deadline}:R>）。"
+                message=await channel.send(text,view=view,allowed_mentions=mentions)
                 state.update(phase='waiting',deadline=time.time()+1800,message=message.id)
                 await self.save_manual_close(row,state,False,self.bot.user.id,'manual_close_notified',{'deadline':state['deadline'],'message':message.id})
                 return

@@ -20,7 +20,7 @@ def format_amount(amount: float, is_escrow_fee: bool = False) -> str:
     
     Args:
         amount: 金额值
-        is_escrow_fee: 是否是托管费用，如果是且金额为0则显示"免费"
+        is_escrow_fee: 是否是担保费用，如果是且金额为0则显示"免费"
     """
     if is_escrow_fee and amount == 0:
         return "免费"
@@ -123,7 +123,7 @@ def create_transaction_embed(
     fields = [
         {"name": "📦 物品", "value": item_name, "inline": True},
         {"name": "💰 价格", "value": format_amount(amount), "inline": True},
-        {"name": "🔒 托管费", "value": format_amount(escrow_fee, is_escrow_fee=True), "inline": True},
+        {"name": "🔒 担保费", "value": format_amount(escrow_fee, is_escrow_fee=True), "inline": True},
         {"name": "💵 总计", "value": format_amount(amount + escrow_fee), "inline": True},
         {"name": "🛒 买家", "value": buyer_value, "inline": True},
         {"name": "🏪 卖家", "value": seller_value, "inline": True},
@@ -167,7 +167,7 @@ def create_rental_embed(
         {"name": "租赁期", "value": f"{rental_period} 天", "inline": True},
         {"name": "租金", "value": format_amount(rental_fee), "inline": True},
         {"name": "押金", "value": format_amount(deposit), "inline": True},
-        {"name": "托管费", "value": format_amount(escrow_fee, is_escrow_fee=True), "inline": True},
+        {"name": "担保费", "value": format_amount(escrow_fee, is_escrow_fee=True), "inline": True},
         {"name": "总计", "value": format_amount(total_amount), "inline": True},
         {"name": "租户", "value": renter_name, "inline": True},
         {"name": "物主", "value": owner_name, "inline": True},

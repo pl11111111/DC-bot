@@ -73,7 +73,15 @@ async def main():
         except ValueError:
             pass
         request.assert_not_awaited()
-        await asyncio.gather(*(p.release('new:first','0x'+'a'*40,98,Decimal('.1'),Decimal('97.9')) for _ in range(3)))
+        await asyncio.gather(*(p.release('new:first','0x'+'a'*40,98,Decimal('.1'),Decimal('97.9')) for _ in range(30)))
+        assert request.await_count==1
+        # Replay after the first wave, and tamper with recipient/amount. Neither
+        # may cause another provider submission after an unknown outcome.
+        await p.release('new:first','0x'+'a'*40,98,Decimal('.1'),Decimal('97.9'))
+        for address,gross,net in [('0x'+'b'*40,98,Decimal('97.9')),('0x'+'a'*40,99,Decimal('98.9'))]:
+            try: await p.release('new:first',address,gross,Decimal('.1'),net)
+            except ValueError: pass
+            else: raise AssertionError('Changed payout intent accepted')
         assert request.await_count==1
     print('PASS unknown withdrawal is never submitted twice')
 

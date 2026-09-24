@@ -331,7 +331,7 @@ class Trading(commands.Cog):
                 topic=f"{ctx.author.name} 和 {user.name} 关于 {item_name} 的交易"
             )
             
-            # 计算托管费用
+            # 计算担保费用
             escrow_fee = 0.0  # 默认为0
             if price >= config.MIN_AMOUNT_FOR_FEE:
                 escrow_fee = config.ESCROW_FEE
@@ -529,7 +529,7 @@ class Trading(commands.Cog):
                 topic=f"{ctx.author.name} 和 {user.name} 关于 {item_name} 的交易"
             )
             
-            # 计算托管费用
+            # 计算担保费用
             escrow_fee = 0.0  # 默认为0
             if price >= config.MIN_AMOUNT_FOR_FEE:
                 escrow_fee = config.ESCROW_FEE
@@ -1128,13 +1128,13 @@ class Trading(commands.Cog):
             # 如果使用了免费托管积分，显示说明
             if has_free_escrow:
                 embed.add_field(
-                    name="托管费用",
+                    name="担保费用",
                     value=f"{escrow_fee:.2f} USDT (已使用积分)",
                     inline=True
                 )
             elif actual_escrow_fee < escrow_fee:
                 embed.add_field(
-                    name="托管费用",
+                    name="担保费用",
                     value=f"{escrow_fee:.2f} USDT (已使用 {free_escrow_amount:.2f} 积分后实付 {actual_escrow_fee:.2f})",
                     inline=True
                 )

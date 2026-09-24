@@ -17,7 +17,7 @@ class RecoveryTests(unittest.IsolatedAsyncioTestCase):
         self.cog.bot=NS(get_channel=lambda _:self.channel,fetch_channel=AsyncMock(),user=NS(id=99))
         self.cog.cleanup_lock=asyncio.Lock()
         self.cog.post_lock=asyncio.Lock()
-        self.row={'id':'order','channel_id':8,'status':'pending','buyer_id':1,'seller_id':2,
+        self.row={'id':'order','channel_id':8,'status':'pending','buyer_id':1,'seller_id':2,'initiator_id':1,
                   'created_at':datetime.utcnow()-timedelta(hours=1)}
         self.cog.order=AsyncMock(return_value=self.row)
         self.cog.post=AsyncMock()

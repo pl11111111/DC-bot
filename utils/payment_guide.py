@@ -8,7 +8,8 @@ from utils import new_store as db, notice_card
 
 cfg=config.NEW
 log=logging.getLogger(__name__)
-TITLE='新手付款指南 · USDT / BSC'
+TITLE='交易BOT指南'
+KNOWN_TITLES=(TITLE,'新手付款指南 · USDT / BSC')
 SOURCE=Path(__file__).resolve().parents[1]/'config'/'payment_guide.md'
 
 
@@ -24,9 +25,9 @@ async def find_existing(forum,bot):
     # A timeout may mean Discord created the thread but its ID was not saved.
     # Check both active and archived posts before making any creation decision.
     threads={t.id:t for t in await forum.guild.active_threads()
-             if t.parent_id==forum.id and t.owner_id==bot.user.id and t.name==TITLE}
+             if t.parent_id==forum.id and t.owner_id==bot.user.id and t.name in KNOWN_TITLES}
     async for thread in forum.archived_threads(limit=None):
-        if thread.owner_id==bot.user.id and thread.name==TITLE: threads[thread.id]=thread
+        if thread.owner_id==bot.user.id and thread.name in KNOWN_TITLES: threads[thread.id]=thread
     if len(threads)>1: raise ValueError('存在多个 bot 新手指南帖，请管理员核对，未继续发布')
     if not threads: return None
     thread=next(iter(threads.values()))
@@ -39,8 +40,9 @@ async def sync(bot):
     if not isinstance(forum,discord.ForumChannel) or forum.guild.id!=cfg.GUILD_ID:
         raise ValueError('NEW_GUIDES_CHANNE_ID 必须是新社群的论坛频道 ID')
     body=SOURCE.read_text(encoding='utf-8').strip()
-    render=notice_card.layout(TITLE,body)
-    digest=hashlib.sha256(body.encode()).hexdigest()
+    # The forum already displays the post title; avoid a second title in the card.
+    render=notice_card.layout('',body)
+    digest=hashlib.sha256((TITLE+'\nbody-only\n'+body).encode()).hexdigest()
     key='payment_guide:'+str(forum.id)
     saved=await db.setting(key)
     message=None
@@ -55,6 +57,8 @@ async def sync(bot):
         message=await find_existing(forum,bot)
     if message is not None:
         if message.author.id!=bot.user.id: raise ValueError('指南不是本 bot 发布的消息')
+        if message.channel.name!=TITLE:
+            await message.channel.edit(name=TITLE,archived=False)
         if not saved or saved.get('hash')!=digest:
             if message.channel.archived: await message.channel.edit(archived=False)
             await notice_card.edit(message,render)

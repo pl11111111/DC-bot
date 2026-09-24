@@ -53,8 +53,14 @@ class PaymentHelpTests(unittest.IsolatedAsyncioTestCase):
         cog=object.__new__(NewTrading)
         channel=NS(send=AsyncMock())
         row=dict(buyer_id=1,seller_id=2)
-        for status,ids in [('confirmed',[1]),('paying',[1,2]),('paid',[1,2]),('shipped',[1]),('receipt_confirmed',[2]),('refund_ready',[1])]:
+        for status,ids in [('confirmed',[1,2]),('paying',[1,2]),('paid',[1,2]),('shipped',[1]),('receipt_confirmed',[2]),('refund_ready',[1])]:
             await cog.notify_step(channel,{**row,'status':status})
+            text=channel.send.await_args.args[0]
+            self.assertNotIn('卡片',text)
+            for uid,label in ((1,'🛒 买家'),(2,'📦 卖家')):
+                if uid in ids:
+                    self.assertIn(f'{label} <@{uid}>：',text)
+                    self.assertEqual(text.count(f'<@{uid}>'),1)
             sent=channel.send.await_args
             mentions=sent.kwargs['allowed_mentions'].to_dict()
             self.assertEqual(mentions['users'],ids)

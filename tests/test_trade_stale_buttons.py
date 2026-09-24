@@ -7,6 +7,16 @@ from modules.new_trading import NewTrading,OrderStateChanged
 
 
 class StaleButtonTests(unittest.IsolatedAsyncioTestCase):
+    async def test_replayed_custom_id_does_not_bypass_actor_or_channel(self):
+        for actor,channel in ((999,8),(2,999)):
+            cog=object.__new__(NewTrading)
+            cog.order=AsyncMock(return_value={'id':'order','channel_id':8,'buyer_id':1,'seller_id':2,'initiator_id':1,'status':'pending'})
+            cog.transition=AsyncMock();cog.prepare_invoice=AsyncMock()
+            inter=self.interaction();inter.user.id=actor;inter.channel_id=channel
+            await cog.on_interaction(inter)
+            cog.transition.assert_not_awaited();cog.prepare_invoice.assert_not_awaited()
+            self.assertIn('无权',inter.response.send_message.await_args.args[0])
+
     def interaction(self):
         return NS(data={'custom_id':'new:trade:confirm:order'},guild=NS(id=2),channel_id=8,user=NS(id=2),
                   response=NS(defer=AsyncMock(),send_message=AsyncMock()),

@@ -58,7 +58,7 @@ class PaymentUiTests(unittest.IsolatedAsyncioTestCase):
         row=dict(id='order',status='receipt_confirmed',item='item',terms='terms',buyer_id=1,seller_id=2,amount=D('3.01'),fee=D('2'),credits=0)
         embed=NewTrading.order_embed(None,row)
         body=trade_card.components(embed,None,True)[0]['components'][1]['content']
-        self.assertIn('**💰 价格** 3.01 USDT　｜　**🔒 托管费** 2 USDT',body)
+        self.assertIn('**💰 价格** 3.01 USDT　｜　**🔒 担保费** 2 USDT',body)
         self.assertNotIn('付款时请以',body)
 
     async def test_dynamic_minimum_rejects_five_accepts_five_point_zero_one(self):

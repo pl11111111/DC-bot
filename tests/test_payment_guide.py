@@ -16,7 +16,7 @@ class GuideTests(unittest.IsolatedAsyncioTestCase):
         async def archived(**kwargs):
             for item in []: yield item
         self.forum.archived_threads=archived
-        self.thread=NS(id=4,parent_id=3,archived=False,fetch_message=AsyncMock())
+        self.thread=NS(id=4,parent_id=3,name=guide.TITLE,archived=False,fetch_message=AsyncMock(),edit=AsyncMock())
         self.message=NS(id=4,channel=self.thread,author=NS(id=99))
         self.thread.fetch_message.return_value=self.message
         self.bot=NS(user=NS(id=99),get_channel=lambda ident:{3:self.forum,4:self.thread}.get(ident),fetch_channel=AsyncMock())
@@ -60,3 +60,14 @@ class GuideTests(unittest.IsolatedAsyncioTestCase):
         self.forum.guild.id=1
         with self.assertRaises(ValueError): await guide.sync(self.bot)
         self.assertEqual(self.saved,{})
+
+    async def test_old_title_reuses_and_renames_existing_post(self):
+        self.thread.owner_id=99
+        self.thread.name='新手付款指南 · USDT / BSC'
+        self.forum.guild.active_threads.return_value=[self.thread]
+        with patch.object(guide.notice_card,'create_forum',AsyncMock()) as create,patch.object(guide.notice_card,'edit',AsyncMock()) as edit:
+            await guide.sync(self.bot)
+        create.assert_not_awaited()
+        self.thread.edit.assert_awaited_once_with(name='交易BOT指南',archived=False)
+        text=edit.await_args.args[1][0]['components'][0]['content']
+        self.assertNotIn('## 交易BOT指南',text)

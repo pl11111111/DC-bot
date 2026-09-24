@@ -39,7 +39,7 @@ def payment_embed(row,invoice,fee=None):
 
 def payment_instructions(invoice,fee=None,guide_url=None):
     amount=Decimal(str(invoice['amount']))
-    guide=(f'[打开新手付款指南]({guide_url})' if guide_url else '请联系管理员获取新手付款指南。')
+    guide=(f'[打开交易BOT指南]({guide_url})' if guide_url else '请联系管理员获取交易BOT指南。')
     return (f'### 实际应到账：{amount:.6f} USDT\n**必须完整保留 6 位小数，不要自行增加到账金额。**\n\n'
             '### 第一次付款？\n交易所可购买并发送 USDT；已有钱包也可付款，选择一种即可。\n'
             '复制订单地址 → 选择 USDT、BSC / BEP20 → 核对实际到账金额 → 确认一次付款。\n'

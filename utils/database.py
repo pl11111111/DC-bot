@@ -564,8 +564,8 @@ async def create_transaction(
         raise ValueError("金额超出有效范围")
         
     if escrow_fee < 0 or escrow_fee > 1000000:
-        logger.error(f"托管费超出范围: {escrow_fee}")
-        raise ValueError("托管费超出有效范围")
+        logger.error(f"担保费超出范围: {escrow_fee}")
+        raise ValueError("担保费超出有效范围")
         
     if not item_name or len(item_name) > 200:
         logger.error(f"物品名称无效: {item_name}")

@@ -270,7 +270,7 @@ class Rental(commands.Cog):
                     await interaction.followup.send("请输入有效的Discord图片URL地址。", ephemeral=True)
                     return
                 
-                # 计算托管费用
+                # 计算担保费用
                 escrow_fee = 0.0
                 
                 # 检查租金是否低于最小收费金额
@@ -358,7 +358,7 @@ class Rental(commands.Cog):
                         # 部分减免
                         actual_escrow_fee = escrow_fee - free_escrow_amount
                 
-                # 更新总金额，加上实际托管费用
+                # 更新总金额，加上实际担保费用
                 total_amount = rental_fee + deposit + actual_escrow_fee
                 
                 # 创建租赁信息嵌入消息
@@ -381,13 +381,13 @@ class Rental(commands.Cog):
                 period_display = f"{rental_period} 小时" if rental_unit == "hours" else f"{rental_period} 天"
                 embed.add_field(name="⏱️ 租赁期限", value=period_display, inline=True)
                 
-                # 显示托管费用，考虑积分
+                # 显示担保费用，考虑积分
                 if has_free_escrow:
-                    embed.add_field(name="🏦 托管费用", value=f"{escrow_fee} USDT (使用积分)", inline=True)
+                    embed.add_field(name="🏦 担保费用", value=f"{escrow_fee} USDT (使用积分)", inline=True)
                 elif actual_escrow_fee < escrow_fee:
-                    embed.add_field(name="🏦 托管费用", value=f"{escrow_fee} USDT (使用 {free_escrow_amount} 积分后实付 {actual_escrow_fee:.2f})", inline=True)
+                    embed.add_field(name="🏦 担保费用", value=f"{escrow_fee} USDT (使用 {free_escrow_amount} 积分后实付 {actual_escrow_fee:.2f})", inline=True)
                 else:
-                    embed.add_field(name="🏦 托管费用", value=f"{escrow_fee} USDT (每天2U)", inline=True)
+                    embed.add_field(name="🏦 担保费用", value=f"{escrow_fee} USDT (每天2U)", inline=True)
                 
                 # 计算总支付金额，考虑积分
                 embed.add_field(name="💰 总支付金额", value=f"{total_amount} USDT", inline=True)
@@ -1133,13 +1133,13 @@ class Rental(commands.Cog):
         period_display = f"{rental['rental_period']} 小时" if rental.get('rental_unit') == "hours" else f"{rental['rental_period']} 天"
         embed.add_field(name="⏱️ 租赁期限", value=period_display, inline=True)
         
-        # 显示托管费用，考虑积分
+        # 显示担保费用，考虑积分
         if has_free_escrow:
-            embed.add_field(name="🏦 托管费用", value=f"{escrow_fee:.2f} USDT (使用积分)", inline=True)
+            embed.add_field(name="🏦 担保费用", value=f"{escrow_fee:.2f} USDT (使用积分)", inline=True)
         elif actual_escrow_fee < escrow_fee:
-            embed.add_field(name="🏦 托管费用", value=f"{escrow_fee:.2f} USDT (使用 {free_escrow_amount:.2f} 积分后实付 {actual_escrow_fee:.2f})", inline=True)
+            embed.add_field(name="🏦 担保费用", value=f"{escrow_fee:.2f} USDT (使用 {free_escrow_amount:.2f} 积分后实付 {actual_escrow_fee:.2f})", inline=True)
         else:
-            embed.add_field(name="🏦 托管费用", value=f"{escrow_fee:.2f} USDT (每天2U)", inline=True)
+            embed.add_field(name="🏦 担保费用", value=f"{escrow_fee:.2f} USDT (每天2U)", inline=True)
         
         embed.add_field(name="💰 总支付金额", value=f"{total_amount:.2f} USDT", inline=True)
         embed.add_field(name="📊 状态", value="已确认，等待支付", inline=True)
@@ -1283,7 +1283,7 @@ class Rental(commands.Cog):
                 pass
         
         # 计算需要支付的总金额
-        # 总金额 = 租金 + 保证金 + 实际托管费用
+        # 总金额 = 租金 + 保证金 + 实际担保费用
         total_amount = float(rental["rental_fee"]) + float(rental["deposit"])
         
         # 获取出租方信息
@@ -1322,7 +1322,7 @@ class Rental(commands.Cog):
                 # 部分减免
                 actual_escrow_fee = escrow_fee - free_escrow_amount
         
-        # 更新总金额，加上实际托管费用
+        # 更新总金额，加上实际担保费用
         total_amount += actual_escrow_fee
         
         # 生成支付地址
@@ -1397,19 +1397,19 @@ class Rental(commands.Cog):
             if escrow_fee > 0:
                 if has_free_escrow:
                     embed.add_field(
-                        name="托管费用",
+                        name="担保费用",
                         value=f"{escrow_fee:.2f} USDT (使用积分)",
                         inline=True
                     )
                 elif actual_escrow_fee < escrow_fee:
                     embed.add_field(
-                        name="托管费用",
+                        name="担保费用",
                         value=f"{escrow_fee:.2f} USDT (使用 {free_escrow_amount:.2f} 积分后实付 {actual_escrow_fee:.2f})",
                         inline=True
                     )
                 else:
                     embed.add_field(
-                        name="托管费用",
+                        name="担保费用",
                         value=f"{escrow_fee:.2f} USDT (每天2U)",
                         inline=True
                     )
@@ -3202,7 +3202,7 @@ class Rental(commands.Cog):
                         )
                         
                         embed.add_field(
-                            name="托管费用",
+                            name="担保费用",
                             value=f"{transaction['escrow_fee']:.2f} USDT (每天2U)",
                             inline=True
                         )
