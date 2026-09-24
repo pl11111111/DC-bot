@@ -37,20 +37,23 @@ def payment_embed(row,invoice,fee=None):
     return embed
 
 
-def payment_instructions(invoice,fee=None):
+def payment_instructions(invoice,fee=None,guide_url=None):
     amount=Decimal(str(invoice['amount']))
-    hint=f'最终的**实际到账金额**必须为 **{amount:.6f} USDT**。'
-    if fee is not None:
-        fee=Decimal(str(fee))
-        hint+=f'\n\n仅当币安从填写金额扣除 **{fee:f} USDT** 时，填写 **{amount+fee:.6f} USDT**。'
-    hint+='\n\n若页面显示的到账金额已正确，**不要再次加手续费**。其他平台按其实际费用核对。'
-    if fee is None: hint+='当前无法查询费用，请按提现页面核对最终到账金额。'
-    return (f'### 钱包转账\n发送 **{amount:.6f} USDT**，普通 BSC 钱包的网络费另用 BNB 支付。请核对网络和金额。\n\n'
-            f'### 币安或其他交易所提现\n{hint}\n\n'
-            '### 为什么不能省略小数？\n小数尾数用于识别订单。请勿只付整数、商品价或保留两位小数；金额不一致可能无法自动识别。\n\n'
-            '### 已付错或未识别\n点击「呼叫管理员」，在交易频道提供实际金额、交易哈希和付款截图。请勿重复付款或自行补差额。金额错误只能由管理员核实入款后手动退款；不收服务费，网络费从退款中扣除并告知。\n\n'
-            '过期请勿转账；二维码仅包含地址，扫码后仍须核对网络和金额。\n\n'
-            '### 邀请信息\nhttps://www.bsmkweb.cc/register?ref=1024490102\n邀请码：`1024490102`')
+    guide=(f'[打开新手付款指南]({guide_url})' if guide_url else '请联系管理员获取新手付款指南。')
+    return (f'### 实际应到账：{amount:.6f} USDT\n**必须完整保留 6 位小数，不要自行增加到账金额。**\n\n'
+            '### 第一次付款？\n交易所可购买并发送 USDT；已有钱包也可付款，选择一种即可。\n'
+            '复制订单地址 → 选择 USDT、BSC / BEP20 → 核对实际到账金额 → 确认一次付款。\n'
+            f'{guide}\n\n'
+            '### 币安或其他交易所\n币安若显示内部转账免手续费，不需要额外加钱。选择链上提现或使用其他交易所时，费用以页面为准。\n'
+            f'最终显示的**实际到账金额必须为 {amount:.6f} USDT**；金额正确就不要再加手续费。\n\n'
+            f'### 已有 BSC 钱包\n发送 **{amount:.6f} USDT**。普通钱包的网络费另用 BNB 支付，不加进 USDT 金额。\n\n'
+            '### 付错或未识别\n点击「呼叫管理员」，提供实际金额、转账记录编号／交易哈希和截图。**不要重复付款或自行补差额。**\n'
+            '金额错误须管理员核实后手动退款，网络费从退款中扣除并告知。\n\n'
+            '过期请勿付款；二维码只有地址，扫码后仍须核对网络和金额。\n\n'
+            '### 管理员核实提醒\n管理员不需要你的密码、助记词、私钥或验证码，请勿提供。\n'
+            '**管理员不会以核对付款、退款或解冻资金为由发送链接，也不会要求你下载任何文件、安装软件或开启远程控制。**\n'
+            '遇到此类要求，请停止操作，回到社群交易频道核实。\n\n'
+            '### 推荐交易所\n[Binance（币安）注册邀请链接](https://www.bsmkweb.cc/register?ref=1024490102)\n邀请码：`1024490102`')
 
 
 def copy_text(invoice):

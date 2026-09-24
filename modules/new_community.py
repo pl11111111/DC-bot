@@ -130,6 +130,14 @@ class NewCommunity(commands.Cog):
             guild=self.bot.get_guild(cfg.GUILD_ID)
             if not guild:
                 return
+            # Publishing permissions or malformed guide configuration must not
+            # interrupt verification, language panels, or invitation maintenance.
+            try:
+                from utils import payment_guide
+                async with self.panel_lock:
+                    await payment_guide.sync(self.bot)
+            except Exception:
+                log.exception('Payment guide publication failed')
             if not self.ready:
                 try:
                     await self.snapshot_invites(guild)

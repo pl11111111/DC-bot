@@ -410,10 +410,9 @@ class NewTrading(commands.Cog):
             invoice=await db.query('SELECT * FROM invoices WHERE order_key=%s',('new:'+ident,),shared=True,one=True)
             if not invoice or invoice['state']!='waiting' or time.time()>=trade_payment_ui.deadline(invoice):
                 return await inter.followup.send('账单已过期或付款已识别，请勿继续转账；已付款请联系管理员核对。',ephemeral=True)
-            fee=None
-            try: fee=Decimal(str((await payments.withdrawal_network())['withdrawFee']))
-            except Exception: log.warning('Payment instruction fee query unavailable: %s',ident)
-            return await inter.followup.send(trade_payment_ui.payment_instructions(invoice,fee),ephemeral=True,allowed_mentions=discord.AllowedMentions.none())
+            from utils import payment_guide
+            guide_url=await payment_guide.url()
+            return await inter.followup.send(trade_payment_ui.payment_instructions(invoice,guide_url=guide_url),ephemeral=True,allowed_mentions=discord.AllowedMentions.none())
         if action=='collect':
             payee=row['buyer_id'] if row['status']=='refund_ready' else row['seller_id']
             if inter.user.id!=payee or row['status'] not in ('receipt_confirmed','refund_ready'):

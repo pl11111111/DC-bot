@@ -28,10 +28,15 @@ class PaymentUiTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('payment-qr.png',layout[0]['components'][2]['items'][0]['media']['url'])
         self.assertIn(ADDRESS,layout[0]['components'][3]['content'])
         self.assertNotIn('币安',layout[0]['components'][3]['content'])
-        self.assertIn('5.021234',ui.payment_instructions(self.invoice(),D('.01')))
-        self.assertIn('5.031234',ui.payment_instructions(self.invoice(),D('.02')))
-        self.assertNotIn('5.021234',ui.payment_instructions(self.invoice()))
-        self.assertIn('不要再次加手续费',ui.payment_instructions(self.invoice(),D('.01')))
+        for fee in (None,D('.01'),D('.02')):
+            text=ui.payment_instructions(self.invoice(),fee,guide_url='https://discord.com/channels/2/3/4')
+            self.assertNotIn('5.021234',text)
+            self.assertNotIn('5.031234',text)
+            self.assertIn('实际到账金额必须为 5.011234',text)
+            self.assertIn('内部转账免手续费',text)
+            self.assertIn('### 推荐交易所',text)
+            self.assertNotIn('### 邀请信息',text)
+            self.assertIn('https://discord.com/channels/2/3/4',text)
 
     def test_qr_is_png_and_contains_only_persisted_address(self):
         original=ui.qrcode.QRCode.add_data
