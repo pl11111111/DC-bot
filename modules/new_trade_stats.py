@@ -20,7 +20,7 @@ ACTIVE={
 }
 REFUND=('refund_ready','releasing_refund')
 REVIEW=('disputed','payment_review')
-TERMINAL=('completed','cancelled','refunded','test_closed','manual_refunded','expired')
+from utils.trade_states import TERMINAL
 
 
 def render(rows,now):
@@ -38,7 +38,7 @@ def render(rows,now):
                   f"\nCompleted: {count(('completed',))}",f"Cancelled: {count(('cancelled',))}",
                   f"Refunded: {count(('refunded',))}",
                   f"Manual refunds: {count(('manual_refunded',))}",
-                  f"Payment expired: {count(('expired',))}",
+                  f"Expired orders: {count(('expired',))}",
                   f"Test orders settled: {count(('test_closed',))}",
                   f'\nCompleted today: {int(done.get("today_n") or 0)}',
                   f'Today\'s completed volume: {today:,.2f} USDT',

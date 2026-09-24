@@ -3,7 +3,7 @@ import asyncio
 import logging
 import uuid
 import time
-from datetime import timezone
+from datetime import timezone, datetime, timedelta
 from pathlib import Path
 from decimal import Decimal
 import discord
@@ -15,7 +15,8 @@ from modules.new_community import buttons, admin, texts
 
 cfg=config.NEW
 log=logging.getLogger(__name__)
-TERMINAL=('completed','cancelled','refunded','test_closed','manual_refunded','expired')
+from utils.trade_states import TERMINAL, TERMINAL_SQL, AUTO_CLEANUP, IDLE_SECONDS
+from utils import trade_idle
 BANNER_DIR=Path(__file__).resolve().parents[1] / 'png'
 # Match the named workflow stage; creating an order renders only its first banner.
 STEP_BANNERS={
@@ -120,7 +121,7 @@ class NewTrading(commands.Cog):
         seller=f"<@{row['seller_id']}>"
         counterpart=seller if row.get('initiator_id')==row['buyer_id'] else buyer
         stages={
-            'pending':('交易请求',f'{counterpart}，请查看物品及附加详情，确认无误后点击「确认交易」。'),
+            'pending':('交易请求',f'{counterpart}，请查看物品及附加详情，30 分钟内点击「确认交易」，超时将结束订单。'),
             'confirmed':('交易已确认',f'{buyer}，交易已被确认。请点击「获取付款信息」继续支付。'),
             'invoicing':('正在生成付款信息','请等待系统生成账单，请勿提前转账。'),
             'paying':('等待买家付款',f'{buyer}，请按本订单付款信息转账；已付款请等待系统确认，勿重复支付。'),
@@ -132,7 +133,7 @@ class NewTrading(commands.Cog):
             'cancelled':('交易已取消','本订单已取消，请勿继续付款或发货。'),
             'disputed':('交易争议处理中',f'{buyer} {seller}，请保留相关证据，在此等待管理员处理。'),
             'payment_timeout':('付款已超时','请勿继续转账。频道关闭前如已付款或需要核实，请点击取消关闭按钮。'),
-            'expired':('付款超时，订单已结束','本订单已超时结束，请勿继续付款。迟到账款须联系管理员核实。'),
+            'expired':('订单已超时结束','本订单已超时结束，请勿继续付款。若已付款，请联系管理员核实。'),
             'payment_review':('付款待核对','请勿继续付款或发货，请联系管理员核对账款。'),
             'refund_ready':('等待领取退款',f'{buyer}，退款已获准，请点击「领取退款」核对退款金额并提供收款地址。'),
             'releasing_refund':('正在处理退款','退款申请已提交处理，请等待系统核对结果，勿重复申请。'),
@@ -169,11 +170,10 @@ class NewTrading(commands.Cog):
         return embed
 
     async def _post(self,row,extra=''):
-        channel=self.bot.get_channel(row['channel_id'])
-        if not channel or channel.guild.id!=cfg.GUILD_ID:
-            return
+        channel=await self.resolve_trade_channel(row)
+        if channel is None: return
         if row['status']=='expired':
-            extra+='\n付款超时，订单名额已释放，频道即将清理。'
+            extra+='\n订单超时，订单名额已释放，频道即将清理。'
         elif row['status'] in TERMINAL and row['status']!='manual_refunded':
             extra+='\n频道将在约 5 分钟后清理。如需保留，请点击下方按钮。'
         qr_file=None
@@ -194,9 +194,7 @@ class NewTrading(commands.Cog):
             if qr_file is not None: qr_file.close()
         if message:
             await db.setting(key,{'message':message.id,'channel':channel.id,'status':row['status']})
-            if row['status']!='pending' and (not previous or previous.get('status')!=row['status']):
-                try: await self.notify_step(channel,row)
-                except discord.HTTPException: log.exception('Trade step notification failed: %s',row['id'])
+            await self.deliver_step_notification(channel,row)
         if previous and previous['channel']==channel.id:
             try:
                 old=await channel.fetch_message(previous['message'])
@@ -209,6 +207,8 @@ class NewTrading(commands.Cog):
         buyer,seller=row['buyer_id'],row['seller_id']
         both=[buyer,seller]
         prompts={
+            'pending':(both,'交易频道已创建，请交易对方在 30 分钟内确认交易。'),
+            'expired':(both,'订单已超时结束，请勿继续转账；若已付款请联系管理员。'),
             'confirmed':([buyer],'交易已确认，请点击「获取付款信息」查看本订单应到账金额。'),
             'invoicing':(both,'正在生成付款信息，请买家等待账单，卖家暂勿发货。'),
             'paying':(both,f'付款信息已展示。买家 <@{buyer}> 请按卡片精确付款；卖家 <@{seller}> 请等待系统确认买家到账，暂勿发货，也不要替买家付款。'),
@@ -279,7 +279,7 @@ class NewTrading(commands.Cog):
                         await cur.execute('INSERT INTO balances(user_id) VALUES(%s) ON DUPLICATE KEY UPDATE user_id=user_id',(uid,))
                         await cur.execute('SELECT user_id FROM balances WHERE user_id=%s FOR UPDATE',(uid,))
                         await cur.fetchone()
-                        await cur.execute("SELECT COUNT(*) AS n FROM orders WHERE (buyer_id=%s OR seller_id=%s) AND status NOT IN ('completed','cancelled','refunded','test_closed','manual_refunded','expired')",(uid,uid))
+                        await cur.execute(f"SELECT COUNT(*) AS n FROM orders WHERE (buyer_id=%s OR seller_id=%s) AND status NOT IN {TERMINAL_SQL}",(uid,uid))
                         if (await cur.fetchone())['n']>=cfg.MAX_ACTIVE: raise ValueError(f'每位用户最多同时进行 {cfg.MAX_ACTIVE} 笔交易，请先完成或取消已有订单。')
                     await cur.execute('INSERT INTO orders(id,buyer_id,seller_id,initiator_id,source_id,item,terms,amount,fee) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s)',
                                       (ident,buyer,seller,user.id,source,item.value,terms.value or '',value,cfg.FEE))
@@ -288,7 +288,7 @@ class NewTrading(commands.Cog):
                     role=guild.get_role(rid)
                     if role: overwrites[role]=discord.PermissionOverwrite(view_channel=True,send_messages=True,read_message_history=True)
                 try:
-                    channel=await guild.create_text_channel('trade-'+ident[:8],category=category,overwrites=overwrites,reason='New guild escrow order '+ident)
+                    channel=await guild.create_text_channel('trade-'+ident[:8],category=category,overwrites=overwrites,topic='Escrow order '+ident,reason='New guild escrow order '+ident)
                     await db.query('UPDATE orders SET channel_id=%s WHERE id=%s',(channel.id,ident))
                     await db.query("INSERT INTO tracked_channels(channel_id,kind) VALUES(%s,'trade')",(channel.id,))
                 except Exception:
@@ -296,8 +296,7 @@ class NewTrading(commands.Cog):
                     raise
                 await db.audit(user.id,'create',{'terms':terms.value,'source':source},ident)
                 await self.post(await self.order(ident),texts()['payment_notice'])
-                await channel.send(f'<@{buyer}> <@{seller}>，交易频道已创建，请查看上方交易内容，由对方确认交易。',
-                    allowed_mentions=discord.AllowedMentions(users=[discord.Object(id=buyer),discord.Object(id=seller)],roles=False,everyone=False))
+                # The durable notification worker retries participant mentions after failures.
                 await inter.followup.send(f'交易已创建：{channel.mention}',ephemeral=True)
             except ValueError as exc:
                 await inter.followup.send(str(exc),ephemeral=True)
@@ -425,6 +424,9 @@ class NewTrading(commands.Cog):
             actor=inter.user.id
             if action=='payment_help':
                 async with self.cleanup_lock:
+                    current=await self.order(ident)
+                    if not current or current['status'] not in ('paying','payment_timeout','payment_review'):
+                        raise OrderStateChanged('付款步骤已改变')
                     last=await db.setting('payment_help:'+ident)
                     if last and time.time()-last['time']<300:
                         return await inter.followup.send('管理员已收到请求，频道已保留。请补充转账金额、交易哈希及付款截图，不要重复付款或补差额。',ephemeral=True)
@@ -445,6 +447,10 @@ class NewTrading(commands.Cog):
                 if row['status'] not in (*TERMINAL,'payment_timeout','payment_review'): raise ValueError('当前步骤不支持保留频道')
                 async with self.cleanup_lock:
                     current=await self.order(ident)
+                    if await db.setting('channel_deleted:'+ident):
+                        raise ValueError('频道已关闭，无法保留，请联系管理员')
+                    if not current or current['status'] not in (*TERMINAL,'payment_timeout','payment_review'):
+                        raise OrderStateChanged('订单状态已改变')
                     if current['status']=='payment_timeout':
                         await self.transition(ident,'payment_timeout','payment_review',actor,{'reason':'用户取消关闭'})
                     await db.query('UPDATE tracked_channels SET hold=TRUE WHERE channel_id=%s',(row['channel_id'],))
@@ -511,13 +517,29 @@ class NewTrading(commands.Cog):
             await inter.followup.send(str(exc) if isinstance(exc,ValueError) else '操作未完成，请勿重复付款，联系管理员核对。',ephemeral=True)
 
     async def prepare_invoice(self,row):
-        address=await binance_api.get_deposit_address('USDT','BSC')
-        if not address: raise ValueError('无法获取收款地址')
+        # Recover the original invoice even after its deadline; never allocate a
+        # replacement amount/address or extend the original payment window.
         key='new:'+row['id']
-        amount=await payments.invoice(key,address,row['amount']+row['fee']-row['credits'])
-        await db.query('UPDATE orders SET address=%s WHERE id=%s',(address,row['id']))
-        await self.transition(row['id'],'invoicing','paying',self.bot.user.id)
-        await self.post(await self.order(row['id']))
+        inv=await db.query('SELECT * FROM invoices WHERE order_key=%s',(key,),shared=True,one=True)
+        if not inv:
+            address=await binance_api.get_deposit_address('USDT','BSC')
+            if not address: raise ValueError('无法获取收款地址')
+            async with db.transaction() as cur:
+                await cur.execute('SELECT status FROM orders WHERE id=%s FOR UPDATE',(row['id'],))
+                current=await cur.fetchone()
+                if not current or current['status']!='invoicing': return
+                await payments.invoice(key,address,row['amount']+row['fee']-row['credits'])
+            inv=await db.query('SELECT * FROM invoices WHERE order_key=%s',(key,),shared=True,one=True)
+        if not inv or inv['state'] not in ('waiting','received','received_late','expired'):
+            raise ValueError('原账单状态异常，需管理员核实')
+        await db.query('UPDATE orders SET address=%s WHERE id=%s',(inv['address'],row['id']))
+        try:
+            await self.transition(row['id'],'invoicing','paying',self.bot.user.id)
+        except OrderStateChanged:
+            return
+        if inv['expires_at']>datetime.utcnow() and inv['state']=='waiting':
+            await self.post(await self.order(row['id']))
+        # The financial worker reconciles received/expired invoices before posting.
 
     async def retire_payout_confirmation(self,inter):
         if getattr(inter,'message',None):
@@ -610,12 +632,15 @@ class NewTrading(commands.Cog):
         async with self.cleanup_lock:
             fresh=await self.order(row['id'])
             if not fresh or fresh['status']!='payment_timeout': return
+            channel=await self.resolve_trade_channel(row)
+            if channel is None:
+                await self.transition(row['id'],'payment_timeout','payment_review',self.bot.user.id,{'reason':'payment channel missing'})
+                await self.alert('付款频道已不存在，原账单已保留，请核实后使用管理员指令结束订单：'+row['id'],notify_admins=True)
+                return
             tracked=await db.query('SELECT hold FROM tracked_channels WHERE channel_id=%s',(row['channel_id'],),one=True)
             if not tracked or tracked['hold']: return
             deposit=await db.query('SELECT id FROM deposits WHERE order_key=%s',('new:'+row['id'],),shared=True,one=True)
             if deposit: return
-            channel=self.bot.get_channel(row['channel_id'])
-            if not channel or channel.guild.id!=cfg.GUILD_ID: return
             key='timeout_close:'+row['id']
             timer=await db.setting(key)
             if not timer:
@@ -630,6 +655,7 @@ class NewTrading(commands.Cog):
                 await db.audit(self.bot.user.id,'timeout_channel_cleanup',{'channel':channel.id},row['id'])
                 try: await channel.delete(reason='Payment expired; order closed and credit reservation released')
                 except discord.NotFound: pass
+                await db.setting('channel_deleted:'+row['id'],{'time':time.time()})
                 await db.query('UPDATE tracked_channels SET closed_at=UTC_TIMESTAMP() WHERE channel_id=%s',(channel.id,))
 
     async def check_closed_payments(self):
@@ -671,25 +697,140 @@ class NewTrading(commands.Cog):
                 log.exception('Could not repair trade channel access: %s',row['id'])
         self.access_ready=complete
 
+    async def mark_paid(self,row,txid):
+        async with db.transaction() as cur:
+            await cur.execute('SELECT * FROM orders WHERE id=%s FOR UPDATE',(row['id'],))
+            fresh=await cur.fetchone()
+            if not fresh or fresh['status']!='paying': return False
+            if fresh['credits']:
+                await cur.execute('UPDATE balances SET reserved=reserved-%s WHERE user_id=%s AND reserved>=%s',(fresh['credits'],fresh['buyer_id'],fresh['credits']))
+                if cur.rowcount!=1: raise ValueError('积分预留不一致，到账状态未提交，需管理员核对')
+            await cur.execute("UPDATE orders SET status='paid' WHERE id=%s",(row['id'],))
+            await cur.execute('INSERT INTO audit(actor_id,action,details,order_id) VALUES(%s,%s,%s,%s)',(self.bot.user.id,'paid',db.encode({'txid':txid,'credits':fresh['credits']}),row['id']))
+        return True
+
+    async def recovery_alert(self,row):
+        try:
+            key='recovery_alert:'+row['id']
+            previous=await db.setting(key)
+            if not previous or time.time()-previous['time']>=3600:
+                await self.alert('订单恢复异常，请管理员核实，禁止重复付款或提现：'+row['id'],notify_admins=True)
+                await db.setting(key,{'time':time.time()})
+        except Exception: log.exception('Recovery alert failed: %s',row['id'])
+
+    async def resolve_trade_channel(self,row):
+        if not row.get('channel_id'):
+            guild=self.bot.get_guild(cfg.GUILD_ID)
+            matches=[ch for ch in guild.text_channels if ch.topic=='Escrow order '+row['id']] if guild else []
+            if len(matches)>1: raise ValueError('多个频道关联同一订单，需要管理员核实')
+            if not matches: return None
+            await db.query('UPDATE orders SET channel_id=%s WHERE id=%s AND channel_id IS NULL',(matches[0].id,row['id']))
+            fresh=await self.order(row['id'])
+            row['channel_id']=fresh['channel_id']
+        channel=self.bot.get_channel(row['channel_id'])
+        if channel is None:
+            try: channel=await self.bot.fetch_channel(row['channel_id'])
+            except discord.NotFound: return None
+            # Forbidden/network errors are not evidence of a deleted channel.
+        if channel.guild.id!=cfg.GUILD_ID: raise ValueError('交易频道不属于新社群')
+        return channel
+
+    async def deliver_step_notification(self,channel,row):
+        key='trade_notification:'+row['id']
+        previous=await db.setting(key)
+        if previous and previous.get('status')==row['status']: return
+        await self.notify_step(channel,row)
+        await db.setting(key,{'status':row['status']})
+
+    async def recover_panels(self):
+        # The committed order is the durable notification task. Delivery receipts
+        # are separate, so a failed Discord send cannot roll back financial state.
+        rows=await db.query("SELECT o.* FROM orders o WHERE NOT EXISTS (SELECT 1 FROM settings s WHERE s.setting_key=CONCAT('channel_deleted:',o.id))")
+        for row in rows:
+            try:
+                if row['status'] in ('payment_timeout','manual_refunded'): continue
+                if await db.setting('channel_deleted:'+row['id']): continue
+                channel=await self.resolve_trade_channel(row)
+                if channel is None:
+                    if row['status'] not in TERMINAL: await self.recovery_alert(row)
+                    else: await db.setting('channel_deleted:'+row['id'],{'time':time.time()})
+                    continue
+                await db.query("INSERT INTO tracked_channels(channel_id,kind) VALUES(%s,'trade') ON DUPLICATE KEY UPDATE channel_id=channel_id",(channel.id,))
+                if row['status']=='paying':
+                    inv=await db.query('SELECT * FROM invoices WHERE order_key=%s',('new:'+row['id'],),shared=True,one=True)
+                    if not inv or inv['state']!='waiting' or inv['expires_at']<=datetime.utcnow(): continue
+                async with self.post_lock:
+                    fresh=await self.order(row['id'])
+                    if not fresh or fresh['status']!=row['status']: continue
+                    panel=await db.setting('trade_panel:'+row['id'])
+                    if not panel or panel.get('status')!=row['status']:
+                        await self._post(row)
+                    else:
+                        await self.deliver_step_notification(channel,row)
+            except Exception: log.exception('Trade notification recovery failed: %s',row['id'])
+
+    async def idle_worker(self):
+        rows=await db.query("SELECT o.*, (SELECT MAX(a.created_at) FROM audit a WHERE a.order_id=o.id AND a.action='confirmed') AS confirmed_at FROM orders o WHERE o.status IN ('pending','confirmed')")
+        for row in rows:
+            try:
+                started=row.get('confirmed_at') if row['status']=='confirmed' else row['created_at']
+                # Old confirmed orders missing an audit timestamp receive a fresh
+                # persisted grace period rather than expiring from creation time.
+                key='idle_timer:'+row['id']+':'+row['status']
+                timer=await db.setting(key)
+                if not timer:
+                    timer={'deadline':(started or datetime.utcnow()).replace(tzinfo=timezone.utc).timestamp()+IDLE_SECONDS[row['status']]}
+                    await db.setting(key,timer)
+                channel=await self.resolve_trade_channel(row)
+                if channel and time.time()>=timer['deadline']-300 and not timer.get('warned'):
+                    # If the bot was offline at warning time, allow a full 5 minutes.
+                    timer['deadline']=max(timer['deadline'],time.time()+300)
+                    await channel.send(f"<@{row['buyer_id']}> <@{row['seller_id']}>，订单尚未{'确认' if row['status']=='pending' else '获取付款信息'}，将在 <t:{int(timer['deadline'])}:R> 自动结束并关闭频道。请及时操作。",
+                        allowed_mentions=discord.AllowedMentions(users=[discord.Object(id=row['buyer_id']),discord.Object(id=row['seller_id'])],roles=False,everyone=False))
+                    timer['warned']=True
+                    await db.setting(key,timer)
+                if time.time()<timer['deadline']: continue
+                async with self.cleanup_lock:
+                    ended=await trade_idle.expire(row['id'],self.bot.user.id,row['status'],datetime.utcfromtimestamp(timer['deadline']))
+                if ended and channel: await self.post(await self.order(row['id']))
+            except Exception:
+                log.exception('Idle order recovery failed: %s',row['id'])
+                await self.recovery_alert(row)
+
+    async def cleanup_finished(self):
+        rows=await db.query("SELECT o.* FROM orders o JOIN tracked_channels c ON c.channel_id=o.channel_id WHERE c.hold=FALSE AND (o.status='expired' OR (o.status IN ('completed','cancelled','refunded','test_closed') AND o.closed_at<UTC_TIMESTAMP()-INTERVAL 5 MINUTE))")
+        for row in rows:
+            try:
+                async with self.cleanup_lock:
+                    fresh=await self.order(row['id'])
+                    if not fresh or fresh['status'] not in AUTO_CLEANUP: continue
+                    if fresh['status']!='expired' and (not fresh.get('closed_at') or fresh['closed_at']>datetime.utcnow()-timedelta(minutes=5)): continue
+                    if await db.setting('channel_deleted:'+row['id']): continue
+                    tracked=await db.query('SELECT hold FROM tracked_channels WHERE channel_id=%s',(fresh['channel_id'],),one=True)
+                    if not tracked or tracked['hold']: continue
+                    channel=await self.resolve_trade_channel(fresh)
+                    if channel:
+                        panel=await db.setting('trade_panel:'+row['id'])
+                        notice=await db.setting('trade_notification:'+row['id'])
+                        if not panel or panel.get('status')!=fresh['status'] or not notice or notice.get('status')!=fresh['status']: continue
+                        await db.audit(self.bot.user.id,'channel_cleanup',{'channel':channel.id},row['id'])
+                        try: await channel.delete(reason='Closed escrow order cleanup')
+                        except discord.NotFound: pass
+                    await db.setting('channel_deleted:'+row['id'],{'time':time.time()})
+            except Exception:
+                log.exception('Channel cleanup failed: %s',row['id'])
+                await self.recovery_alert(row)
+
     @tasks.loop(seconds=60)
     async def worker(self):
         try:
             guild=self.bot.get_guild(cfg.GUILD_ID)
             if not guild: return
-            await self.retry_forums(guild)
-            if not self.access_ready: await self.repair_trade_access(guild)
-            await self.manual_close_worker()
-            if not cfg.PAYMENTS_ENABLED: return
+            if not cfg.PAYMENTS_ENABLED:
+                await self.retry_forums(guild)
+                await self.manual_close_worker()
+                return
             await self.check_closed_payments()
-            finished=await db.query("SELECT o.* FROM orders o JOIN tracked_channels c ON c.channel_id=o.channel_id WHERE c.hold=FALSE AND (o.status='expired' OR (o.status IN ('completed','cancelled','refunded','test_closed') AND o.closed_at<UTC_TIMESTAMP()-INTERVAL 5 MINUTE))")
-            for done in finished:
-                channel=self.bot.get_channel(done['channel_id'])
-                if channel and channel.guild.id==cfg.GUILD_ID:
-                    # Re-check immediately before destructive Discord operation.
-                    tracked=await db.query('SELECT hold FROM tracked_channels WHERE channel_id=%s',(channel.id,),one=True)
-                    if tracked and not tracked['hold']:
-                        await db.audit(self.bot.user.id,'channel_cleanup',{'channel':channel.id},done['id'])
-                        await channel.delete(reason='Completed escrow channel cleanup')
             rows=await db.query("SELECT * FROM orders WHERE status IN ('invoicing','paying','payment_timeout','payment_review','releasing','releasing_refund')")
             for row in rows:
                 try:
@@ -698,7 +839,11 @@ class NewTrading(commands.Cog):
                         await self.prepare_invoice(row)
                     elif row['status'] in ('paying','payment_timeout','payment_review'):
                         inv=await db.query('SELECT * FROM invoices WHERE order_key=%s',(key,),shared=True,one=True)
-                        if not inv: continue
+                        if not inv:
+                            if row['status']!='payment_review':
+                                await self.transition(row['id'],row['status'],'payment_review',self.bot.user.id,{'reason':'missing invoice'})
+                            await self.recovery_alert(row)
+                            continue
                         if inv['state']=='manual_refunded': continue
                         txid=await payments.find_deposit(key,inv['address'],inv['amount'])
                         if txid:
@@ -722,11 +867,7 @@ class NewTrading(commands.Cog):
                                     await self.post(row,'已找到到账记录，自动关闭已取消，请等待管理员核实。')
                                 # Stay review-only: no automatic allocation/refund after expiry.
                                 continue
-                            async with db.transaction() as cur:
-                                await cur.execute("UPDATE orders SET status='paid' WHERE id=%s AND status='paying'",(row['id'],))
-                                if cur.rowcount:
-                                    await cur.execute('UPDATE balances SET reserved=reserved-%s WHERE user_id=%s AND reserved>=%s',(row['credits'],row['buyer_id'],row['credits']))
-                                    await cur.execute('INSERT INTO audit(actor_id,action,details,order_id) VALUES(%s,%s,%s,%s)',(self.bot.user.id,'paid',db.encode({'txid':txid,'credits':row['credits']}),row['id']))
+                            await self.mark_paid(row,txid)
                             await self.post(await self.order(row['id']))
                         else:
                             from datetime import datetime
@@ -755,7 +896,23 @@ class NewTrading(commands.Cog):
                             if not notified:
                                 await self.alert('放款需人工核对，禁止重复提交：'+row['id']+('；资金安全校验异常，新的自动放款已暂停。' if payout and payout['state']=='review' else ''))
                                 await db.setting('payout_alert:'+row['id'],True)
-                except Exception: log.exception('Order recovery failed: %s',row['id'])
+                except Exception:
+                    log.exception('Order recovery failed: %s',row['id'])
+                    if row['status']=='invoicing':
+                        try:
+                            key='invoice_failure:'+row['id']
+                            failure=await db.setting(key)
+                            if not failure: await db.setting(key,{'time':time.time()})
+                            elif time.time()-failure['time']>=900:
+                                await self.transition(row['id'],'invoicing','payment_review',self.bot.user.id,{'reason':'invoice recovery repeatedly failed'})
+                        except Exception: log.exception('Invoice failure escalation failed')
+                    await self.recovery_alert(row)
+            # Discord cleanup/notifications must not prevent financial reconciliation.
+            for operation in (self.idle_worker,self.recover_panels,self.cleanup_finished,self.manual_close_worker):
+                try: await operation()
+                except Exception: log.exception('Order maintenance failed: %s',operation.__name__)
+            await self.retry_forums(guild)
+            if not self.access_ready: await self.repair_trade_access(guild)
         except Exception: log.exception('New trading worker failed')
 
     @worker.before_loop

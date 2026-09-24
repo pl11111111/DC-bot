@@ -46,6 +46,7 @@ class StaleButtonTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_new_message_retires_previous_buttons(self):
         cog=object.__new__(NewTrading)
+        cog.deliver_step_notification=AsyncMock()
         old=NS(edit=AsyncMock())
         channel=NS(id=8,guild=NS(id=2),fetch_message=AsyncMock(return_value=old))
         cog.bot=NS(get_channel=lambda cid:channel)

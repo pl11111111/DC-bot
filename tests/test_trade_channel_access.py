@@ -47,6 +47,9 @@ class TradeAccessTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(overwrites[guild.default_role].view_channel)
         create=next(args for args in calls if args[0].startswith('INSERT INTO orders'))
         self.assertEqual(create[1][6],'')
+        # Creation delegates the persistent ping to post/notification delivery.
+        cog.post.assert_awaited_once()
+        await cog.notify_step(channel,{'buyer_id':1,'seller_id':2,'status':'pending'})
         mention=channel.send.await_args.kwargs['allowed_mentions'].to_dict()
         self.assertEqual(mention['users'],[1,2])
         self.assertNotIn('everyone',mention['parse'])
