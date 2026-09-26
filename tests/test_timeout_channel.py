@@ -58,6 +58,15 @@ class TimeoutChannelTests(unittest.IsolatedAsyncioTestCase):
         self.channel.delete.assert_not_awaited()
 
 class DepositLookupTests(unittest.IsolatedAsyncioTestCase):
+    async def test_non_success_status_blocks_claim_and_distinguishes_waiting(self):
+        from utils.shared_payments import DepositNotReady
+        for status in (0,6,2,7,8,99,None,'1',True):
+            with self.subTest(status=status):
+                with self.assertRaises(DepositNotReady) as caught:
+                    await self.lookup([[dict(coin='USDT',network='BSC',address='address',amount=7,status=status)]])
+                self.assertEqual(caught.exception.waiting,type(status) is int and status in (0,6))
+                self.assertIn(repr(status),str(caught.exception))
+
     async def lookup(self,pages):
         from datetime import datetime
         from utils import shared_payments as payments

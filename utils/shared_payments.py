@@ -8,6 +8,15 @@ import config
 from utils import new_store as db
 from utils import payout_guard
 
+class DepositNotReady(ValueError):
+    """A matching deposit exists: never treat it as an unpaid invoice."""
+    def __init__(self,status):
+        self.status=status
+        self.waiting=type(status) is int and status in (0,6)
+        labels={0:'等待确认',6:'已入账但暂不能提现',2:'被拒绝',7:'错误入款',8:'等待用户确认'}
+        label=labels.get(status,'未知状态') if type(status) is int else '未知状态'
+        super().__init__(f'匹配入款状态 {status!r}（{label}），保留订单，暂不允许发货或放款')
+
 def money(value):
     result = Decimal(str(value))
     if not result.is_finite() or result <= 0 or result > Decimal('1000000'):
@@ -112,8 +121,8 @@ async def find_deposit(key, address, expected):
                 or str(item.get('address','')).lower() != address.lower()
                 or Decimal(str(item.get('amount',0))) != Decimal(str(expected))):
             continue
-        if item.get('status')!=1:
-            raise ValueError('发现匹配金额的未完成或异常入款，请保留订单等待核实')
+        if type(item.get('status')) is not int or item['status']!=1:
+            raise DepositNotReady(item.get('status'))
         identity = item.get('id')
         txid = item.get('txId')
         if not identity or not txid:

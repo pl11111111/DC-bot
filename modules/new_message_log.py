@@ -1,5 +1,6 @@
 """Latest-message cache and durable edit/delete events, with bounded retention."""
 import asyncio
+import json
 import logging
 from datetime import datetime, timedelta, timezone
 import discord
@@ -16,6 +17,45 @@ def attachments(items):
 
 def naive(value):
     return value.astimezone(timezone.utc).replace(tzinfo=None)
+
+def event_messages(event):
+    """Render evidence inline; repeat its identity on every length-limited part."""
+    author=f"<@{event['author_id']}>" if event['author_id'] else '未知'
+    header=(f"{event['kind']} | 频道 <#{event['channel_id']}> | "
+            f"消息 <{event['message_id']}> | 作者 {author}")
+    payload=json.loads(event['payload'])
+
+    def body(value):
+        return '（未缓存到正文）' if value is None else (value or '（无文字内容）')
+
+    def files(value):
+        if isinstance(value,str): value=json.loads(value)
+        return '\n'.join(f"📎 {item.get('name') or '附件'}：{item.get('url') or '链接不可用'}"
+                         for item in (value or []))
+
+    if event['kind']=='delete':
+        sections=[body(payload.get('body')),files(payload.get('attachments'))]
+    elif event['kind']=='edit':
+        sections=['**修改前**',body(payload.get('before')),files(payload.get('attachments_before')),
+                  '**修改后**',body(payload.get('after')),files(payload.get('attachments_after'))]
+    else:
+        sections=[event['payload']]
+    remaining='\n\n'.join(section for section in sections if section)
+    # Count UTF-16 units conservatively so emoji-heavy evidence also fits.
+    limit=2000-len(header.encode('utf-16-le'))//2-2
+    while remaining:
+        size=0
+        end=0
+        for char in remaining:
+            units=2 if ord(char)>0xffff else 1
+            if size+units>limit: break
+            size+=units
+            end+=1
+        if end<len(remaining):
+            newline=remaining.rfind('\n',0,end)
+            if newline>0: end=newline+1
+        yield header+'\n\n'+remaining[:end]
+        remaining=remaining[end:]
 
 # Manual refunds remain evidence-protected until their separate close flow finishes.
 from utils.trade_states import TERMINAL_SQL
@@ -194,10 +234,8 @@ class NewMessageLog(commands.Cog):
             channel=self.bot.get_channel(cfg.LOG_CHANNEL_ID)
             if channel and channel.guild.id==cfg.GUILD_ID:
                 for event in await db.query('SELECT * FROM message_events WHERE delivered=FALSE ORDER BY id LIMIT 10'):
-                    import io
-                    payload=event['payload']
-                    await channel.send(f"{event['kind']} | 频道 {event['channel_id']} | 消息 {event['message_id']} | 作者 {event['author_id'] or '未知'}",
-                        file=discord.File(io.BytesIO(payload.encode('utf-8')),filename=f"event-{event['id']}.txt"),allowed_mentions=discord.AllowedMentions.none())
+                    for content in event_messages(event):
+                        await channel.send(content,allowed_mentions=discord.AllowedMentions.none(),suppress=True)
                     await db.query('UPDATE message_events SET delivered=TRUE WHERE id=%s',(event['id'],))
         except Exception: log.exception('New message log maintenance failed')
 

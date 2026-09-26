@@ -11,6 +11,59 @@ from modules.new_trading import NewTrading
 
 
 class RecoveryTests(unittest.IsolatedAsyncioTestCase):
+    async def test_deposit_wait_timer_survives_restart_and_limits_alerts(self):
+        from utils.shared_payments import DepositNotReady
+        stored={}
+        async def setting(key,value=None):
+            if value is not None: stored[key]=dict(value)
+            return stored.get(key)
+        self.cog.alert=AsyncMock()
+        with patch('modules.new_trading.db.setting',setting),patch('modules.new_trading.time.time',return_value=1000) as clock:
+            await self.cog.deposit_status_notice(self.row,DepositNotReady(0))
+            self.cog.alert.assert_not_awaited()
+            clock.return_value=1899
+            # New cog has no in-memory timer; it must reuse the saved first observation.
+            restarted=object.__new__(NewTrading)
+            restarted.alert=self.cog.alert
+            await restarted.deposit_status_notice(self.row,DepositNotReady(6))
+            self.cog.alert.assert_not_awaited()
+            clock.return_value=1900
+            await restarted.deposit_status_notice(self.row,DepositNotReady(6))
+            self.cog.alert.assert_awaited_once()
+            clock.return_value=1960
+            await restarted.deposit_status_notice(self.row,DepositNotReady(6))
+            self.cog.alert.assert_awaited_once()
+            clock.return_value=5500
+            await restarted.deposit_status_notice(self.row,DepositNotReady(6))
+            self.assertEqual(self.cog.alert.await_count,2)
+
+    async def test_abnormal_deposit_alert_includes_status_immediately(self):
+        from utils.shared_payments import DepositNotReady
+        self.cog.alert=AsyncMock()
+        with patch('modules.new_trading.db.setting',AsyncMock(return_value=None)):
+            await self.cog.deposit_status_notice(self.row,DepositNotReady(7))
+        self.cog.alert.assert_awaited_once()
+        self.assertIn('状态 7',self.cog.alert.await_args.args[0])
+
+    async def test_pending_deposit_worker_cannot_mark_paid_or_timeout(self):
+        from utils.shared_payments import DepositNotReady
+        self.cog.bot.get_guild=lambda _:NS(id=2)
+        self.cog.access_ready=True
+        for method in ('check_closed_payments','retry_forums','idle_worker','recover_panels',
+                       'manual_close_worker','cleanup_finished','mark_paid','timeout_channel',
+                       'transition','deposit_status_notice'):
+            setattr(self.cog,method,AsyncMock())
+        self.row['status']='paying'
+        inv=dict(state='waiting',address='address',amount=7,expires_at=datetime.utcnow()-timedelta(hours=1))
+        for status in (0,6):
+            with patch('modules.new_trading.cfg.PAYMENTS_ENABLED',True),patch('modules.new_trading.db.query',AsyncMock(side_effect=[[self.row],inv])),patch('modules.new_trading.payments.find_deposit',AsyncMock(side_effect=DepositNotReady(status))):
+                await NewTrading.worker.coro(self.cog)
+        self.cog.mark_paid.assert_not_awaited()
+        self.cog.timeout_channel.assert_not_awaited()
+        self.cog.transition.assert_not_awaited()
+        self.cog.recovery_alert.assert_not_awaited()
+        self.assertEqual(self.cog.deposit_status_notice.await_count,2)
+
     def setUp(self):
         self.cog=object.__new__(NewTrading)
         self.channel=NS(id=8,guild=NS(id=2),send=AsyncMock(),delete=AsyncMock())

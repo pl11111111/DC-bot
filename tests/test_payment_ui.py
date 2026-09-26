@@ -34,7 +34,7 @@ class PaymentUiTests(unittest.IsolatedAsyncioTestCase):
             self.assertNotIn('5.031234',text)
             self.assertIn('实际到账金额必须为 5.011234',text)
             self.assertIn('内部转账免手续费',text)
-            self.assertIn('### 推荐交易所',text)
+            self.assertIn('### ⭐ 推荐交易所',text)
             self.assertNotIn('### 邀请信息',text)
             self.assertIn('https://discord.com/channels/2/3/4',text)
 

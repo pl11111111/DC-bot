@@ -690,6 +690,8 @@ class NewTrading(commands.Cog):
                     if reopened:
                         await self.alert('已结束订单发现迟到账款，已重新转入付款待核对，禁止自动放款：'+row['id'],notify_admins=True)
                         await self.post(await self.order(row['id']),'发现迟到账款，请等待管理员核实；已删除的频道不会自动重建。')
+            except payments.DepositNotReady as exc:
+                await self.deposit_status_notice(row,exc)
             except Exception: log.exception('Closed order deposit lookup failed: %s',row['id'])
 
     async def repair_trade_access(self,guild):
@@ -726,6 +728,26 @@ class NewTrading(commands.Cog):
             await cur.execute("UPDATE orders SET status='paid' WHERE id=%s",(row['id'],))
             await cur.execute('INSERT INTO audit(actor_id,action,details,order_id) VALUES(%s,%s,%s,%s)',(self.bot.user.id,'paid',db.encode({'txid':txid,'credits':fresh['credits']}),row['id']))
         return True
+
+    async def deposit_status_notice(self,row,exc):
+        # Persistent timers survive restarts. Never advance or cancel the order here.
+        try:
+            now=time.time()
+            key='deposit_wait:'+row['id']
+            previous=await db.setting(key)
+            state=dict(previous or {'first_seen':now})
+            changed=not previous or previous.get('status')!=exc.status
+            state['status']=exc.status
+            if changed:
+                if exc.waiting: log.info('Deposit awaiting confirmation: %s | %s',row['id'],exc)
+                else: log.warning('Deposit requires review: %s | %s',row['id'],exc)
+            due=not exc.waiting or now-state['first_seen']>=900
+            if due and (changed or 'alert_at' not in state or now-state['alert_at']>=3600):
+                text='入款等待确认已超过 15 分钟' if exc.waiting else '入款状态异常，请管理员核实'
+                await self.alert(f'{text}：{row["id"]}；{exc}。请勿重复付款。',notify_admins=True)
+                state['alert_at']=now
+            if state!=previous: await db.setting(key,state)
+        except Exception: log.exception('Deposit status notification failed: %s',row['id'])
 
     async def recovery_alert(self,row):
         try:
@@ -922,6 +944,8 @@ class NewTrading(commands.Cog):
                             if not notified:
                                 await self.alert('放款需人工核对，禁止重复提交：'+row['id']+('；资金安全校验异常，新的自动放款已暂停。' if payout and payout['state']=='review' else ''))
                                 await db.setting('payout_alert:'+row['id'],True)
+                except payments.DepositNotReady as exc:
+                    await self.deposit_status_notice(row,exc)
                 except Exception:
                     log.exception('Order recovery failed: %s',row['id'])
                     if row['status']=='invoicing':
