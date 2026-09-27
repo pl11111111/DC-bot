@@ -91,12 +91,7 @@ async def on_ready():
         logger.error(f"同步斜杠命令时出错: {e}", exc_info=True)
     
     # 设置机器人状态
-    await bot.change_presence(
-        activity=discord.Activity(
-            type=discord.ActivityType.playing,
-            name="MapleStory N"
-        )
-    )
+    await bot.change_presence(activity=None)
     
     # 显示服务器列表
     servers = len(bot.guilds)
@@ -215,7 +210,7 @@ async def on_guild_join(guild):
             party_channel = await guild.create_text_channel("party-finder")
             await party_channel.send(
                 "此频道用于创建和管理组队。\n"
-                "使用 `/party boss` 创建BOSS组队。\n"
+                "使用 `/party task` 创建任务组队。\n"
                 "使用 `/party task` 创建任务组队。"
             )
             
@@ -223,7 +218,7 @@ async def on_guild_join(guild):
             if guild.system_channel:
                 await guild.system_channel.send(
                     "我已创建 #party-finder 频道用于创建组队。"
-                    "用户可以在那里使用 `/party boss` 和 `/party task` 命令。"
+                    "用户可以在那里使用 `/party task` 命令。"
                 )
         except Exception as e:
             logger.error(f"创建 #party-finder 频道时出错: {e}")

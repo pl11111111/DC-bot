@@ -253,7 +253,7 @@ class NewMessageLog(commands.Cog):
         for row in manual:
             closure=await db.setting('manual_close:'+row['id'])
             if not closure or closure.get('phase')!='deleted':
-                return await ctx.respond('手动退款频道仍待确认或有保留请求，请先通过 /new_trade_channel 处理。',ephemeral=True)
+                return await ctx.respond('手动退款频道仍待确认或有保留请求，请先通过 /new_trade channel 处理。',ephemeral=True)
         active=await db.query(f"SELECT o.id FROM orders o WHERE (o.channel_id=%s OR o.source_id=%s) AND {ACTIVE_ORDER_SQL}",(cid,cid))
         if active: return await ctx.respond('仍有未结束订单，不能解除证据保留。',ephemeral=True)
         view=discord.ui.View(timeout=180)

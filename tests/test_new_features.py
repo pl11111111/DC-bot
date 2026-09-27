@@ -74,6 +74,28 @@ class PayoutTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual((fee,net),(Decimal('.01'),Decimal('3')))
 
 class IsolationTests(unittest.IsolatedAsyncioTestCase):
+    async def test_dm_commands_rejected_before_dispatch(self):
+        bot=IsolatedBot(intents=discord.Intents.none())
+        response=NS(is_done=lambda:False,send_message=AsyncMock(),send_autocomplete_result=AsyncMock())
+        interaction=NS(guild=None,response=response,type=discord.InteractionType.application_command)
+        with patch('discord.ext.commands.Bot.process_application_commands',AsyncMock()) as dispatch:
+            await bot.process_application_commands(interaction)
+            dispatch.assert_not_awaited()
+            response.send_message.assert_awaited_once()
+            interaction.type=discord.InteractionType.auto_complete
+            await bot.process_application_commands(interaction)
+            response.send_autocomplete_result.assert_awaited_once_with([])
+            interaction.guild=NS(id=2)
+            await bot.process_application_commands(interaction)
+            dispatch.assert_awaited_once()
+        await bot.close()
+
+    async def test_global_check_denies_all_dm_commands(self):
+        for module in ('modules.social','modules.admin','modules.new_trading','unknown'):
+            async def callback(): pass
+            callback.__module__=module
+            self.assertFalse(command_allowed(NS(guild=None,command=NS(callback=callback))))
+
     async def test_legacy_listener_does_not_receive_new_guild(self):
         bot=IsolatedBot(intents=discord.Intents.none())
         calls=[]
@@ -172,7 +194,8 @@ class LoadTests(unittest.IsolatedAsyncioTestCase):
         right_click=[c for c in bot.pending_application_commands if c.name in ('开始交易(buy)','开始交易(sell)')]
         self.assertEqual(len(right_click),2)
         self.assertTrue(all(c.guild_ids==[2] for c in right_click))
-        for command in bot.pending_application_commands: command.to_dict()
+        for command in bot.pending_application_commands:
+            self.assertFalse(command.to_dict()['dm_permission'])
         for command in bot.pending_application_commands:
             module=getattr(getattr(command,'callback',None),'__module__','') or getattr(getattr(command,'cog',None),'__module__','')
             if module.startswith('modules.new_'):
@@ -180,6 +203,15 @@ class LoadTests(unittest.IsolatedAsyncioTestCase):
             elif module.startswith('modules.'):
                 self.assertEqual(command.guild_ids,[1],command.name)
         names={c.name for c in bot.pending_application_commands if c.guild_ids==[2]}
+        self.assertNotIn('new_trade_close_test',names)
+        self.assertNotIn('new_trade_review',names)
+        trade=next(c for c in bot.pending_application_commands if c.name=='new_trade')
+        self.assertEqual({c.name for c in trade.subcommands},{'review','refund','confirm','channel'})
+        party=next(c for c in bot.pending_application_commands if c.name=='party')
+        self.assertNotIn('boss',{c.name for c in party.subcommands})
+        for command in bot.pending_application_commands:
+            if command.guild_ids==[2] and isinstance(command,(discord.SlashCommand,discord.SlashCommandGroup)):
+                self.assertTrue(command.default_member_permissions.administrator)
         self.assertNotIn('查询积分',names)
         self.assertTrue({'new_panel','new_forum_rules','new_notice'}<=names)
         for name in list(bot.extensions): bot.unload_extension(name)
@@ -189,6 +221,33 @@ class LoadTests(unittest.IsolatedAsyncioTestCase):
         pending=[t for t in asyncio.all_tasks() if t is not current]
         for task in pending: task.cancel()
         await asyncio.gather(*pending,return_exceptions=True)
+
+class TradeCommandPermissionTests(unittest.IsolatedAsyncioTestCase):
+    async def test_management_callbacks_deny_ordinary_users_and_wrong_guild(self):
+        from modules.new_trading import NewTrading
+        cog=object.__new__(NewTrading)
+        cases=[(NewTrading.review,dict(decision='无到账关闭',reason='test')),
+               (NewTrading.manual_refund,dict(deposit_txid='x',withdrawal_id='x',refund_address='x',reason='test')),
+               (NewTrading.confirm_review,dict(code='x')),
+               (NewTrading.manage_refund_channel,dict(action='暂停关闭',reason='test'))]
+        for guild,administrator in ((NS(id=2),False),(NS(id=1),True),(None,True)):
+            for command,args in cases:
+                ctx=NS(guild=guild,author=NS(guild_permissions=NS(administrator=administrator),roles=[]),respond=AsyncMock(),defer=AsyncMock())
+                await command.callback(cog,ctx,order_id='order',**args)
+                ctx.respond.assert_awaited_once_with('没有操作权限。',ephemeral=True)
+                ctx.defer.assert_not_awaited()
+
+    async def test_global_check_preserves_configured_admin_roles(self):
+        from modules.new_trading import NewTrading
+        from modules.new_community import NewCommunity
+        ctx=NS(guild=NS(id=2),command=NewTrading.review,
+               author=NS(guild_permissions=NS(administrator=False),roles=[]))
+        with patch('config.NEW.TRADE_ADMIN_ROLES',[123]):
+            self.assertFalse(command_allowed(ctx))
+            ctx.author.roles=[NS(id=123)]
+            self.assertTrue(command_allowed(ctx))
+            ctx.guild=NS(id=1)
+            self.assertFalse(command_allowed(ctx))
 
 class RetirementAndModerationTests(unittest.IsolatedAsyncioTestCase):
     async def test_disabled_ranking_does_not_start_or_cache(self):

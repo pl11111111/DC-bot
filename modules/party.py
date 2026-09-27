@@ -992,17 +992,6 @@ class PartyModule:
                         delete_after_timeout(before.channel)
                     )
         
-        @self.party.command(name="boss", description="创建BOSS组队频道")
-        async def create_boss_party(ctx):
-            # 检查是否在指定频道使用指令
-            allowed_channel_id = int(os.getenv("NOTICE_CHANNEL_ID", 0))
-            if allowed_channel_id and ctx.channel.id != allowed_channel_id:
-                return await ctx.respond(get_text("error_wrong_channel", get_lang_code(ctx.locale)), ephemeral=True)
-                
-            lang = get_lang_code(ctx.locale)
-            view = PartyCreationView(lang)
-            await ctx.respond(get_text("select_boss_team_info", lang), view=view, ephemeral=True)
-
         @self.party.command(name="task", description="创建任务组队频道")
         async def create_task_party(ctx):
             # 检查是否在指定频道使用指令
