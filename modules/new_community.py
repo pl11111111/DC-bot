@@ -150,7 +150,7 @@ class NewCommunity(commands.Cog):
                 configured=await db.setting('community_content:channel:'+str(channel_id))
                 if configured:
                     await self.save_panel(channel_id,'channel:'+str(channel_id),configured['title'],configured['body'],
-                        buttons([('Verify / 开始验证','verify'),('Translate / 翻译','translate')]) if configured.get('verification') else None,
+                        buttons([('Verify','verify'),('Translate','translate')]) if configured.get('verification') else None,
                         banner=configured.get('banner'))
                     continue
                 if cfg.RULES_CHANNEL_ID==cfg.VERIFY_CHANNEL_ID:
@@ -161,7 +161,7 @@ class NewCommunity(commands.Cog):
                                 'banner':content.get(kind+'_banner',content.get('banners',{}).get(str(channel_id)))}
                 if panel['body']:
                     await self.save_panel(channel_id,kind,panel['title'],panel['body'],
-                        buttons([('Verify / 开始验证','verify'),('Translate / 翻译','translate')]) if kind=='verify' else None,banner=panel.get('banner'))
+                        buttons([('Verify','verify'),('Translate','translate')]) if kind=='verify' else None,banner=panel.get('banner'))
             await self.save_panel(cfg.LANGUAGE_CHANNEL_ID,'language','Choose your language',
                 'English is the default. You may select one additional language, or none.\nEnglish 为默认语言，可额外选择一种语言，也可以不选。',
                 buttons([(name,'lang:'+str(role)) for name,role in cfg.LANGUAGES.items() if role]+[('清除额外语言','lang:clear')]))
@@ -326,7 +326,7 @@ class NewCommunity(commands.Cog):
                     await db.setting('community_content:'+kind,values)
                     await db.audit(click.user.id,'community_panel_edit',{'kind':kind,'channel':channel_id,**values})
                     await self.save_panel(channel_id,kind,title.value,body.value,
-                        buttons([('Verify / 开始验证','verify'),('Translate / 翻译','translate')]) if verified else None,banner=banner.value or '')
+                        buttons([('Verify','verify'),('Translate','translate')]) if verified else None,banner=banner.value or '')
                     await click.followup.send(f'已发布到 {channel.mention}，后续编辑使用 /new_panel。',ephemeral=True)
                 except (discord.Forbidden,discord.NotFound,ValueError) as exc:
                     used=False

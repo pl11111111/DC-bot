@@ -7,6 +7,19 @@ from unittest.mock import AsyncMock,patch
 from utils import verification_flow as f
 
 class VerificationTests(unittest.IsolatedAsyncioTestCase):
+    async def test_client_localizes_initial_interface_independently_of_selected_role(self):
+        for locale,expected in [('ja','次へ'),('zh-TW','下一步'),('fr','Next'),('en-US','Next'),('ko','다음')]:
+            self.inter.locale=locale
+            view=f.VerificationView(self.cog,self.inter,self.original,'English')
+            self.assertEqual(view.children[-1].label,expected)
+            self.assertNotIn(' / ',view.render().title)
+
+    async def test_role_diagnostic_identifies_protected_role(self):
+        role=NS(id=12,is_default=lambda:False,managed=False,permissions=NS(administrator=False,manage_roles=False))
+        with patch.object(f.cfg,'TRADE_ADMIN_ROLES',[12]),patch.object(f.cfg,'NOTICE_ADMIN_ROLES',[]):
+            self.assertIn('configured administrator role',f.role_error(role,NS(),'verification'))
+        self.assertIn('role not found',f.role_error(None,NS(),'verification'))
+
     def setUp(self):
         self.original={'title':'Rules','body':'Read these rules'}
         self.cog=NS(role_locks={},verify_count=AsyncMock())
@@ -47,7 +60,7 @@ class VerificationTests(unittest.IsolatedAsyncioTestCase):
     async def test_agree_grants_selected_language_and_verification_only(self):
         verified=NS(id=9); language=NS(id=12); old=NS(id=13)
         member=NS(roles=[old],remove_roles=AsyncMock(),add_roles=AsyncMock())
-        guild=NS(fetch_member=AsyncMock(return_value=member),get_role=lambda ident:{9:verified,12:language}.get(ident))
+        guild=NS(me=NS(guild_permissions=NS(manage_roles=True)),fetch_member=AsyncMock(return_value=member),get_role=lambda ident:{9:verified,12:language}.get(ident))
         view=f.VerificationView(self.cog,self.inter,self.original,'中文')
         view.stage='rules'
         with patch.object(f.cfg,'LANGUAGES',{'中文':12,'日本語':13}),patch.object(f.cfg,'VERIFIED_ROLE_ID',9),patch('modules.new_community.safe_self_role',return_value=True),patch.object(f.db,'audit',AsyncMock()):
