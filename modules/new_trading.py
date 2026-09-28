@@ -469,9 +469,9 @@ class NewTrading(commands.Cog):
                         await self.transition(ident,'payment_timeout','payment_review',actor,{'reason':'用户取消关闭'})
                     await db.query('UPDATE tracked_channels SET hold=TRUE WHERE channel_id=%s',(row['channel_id'],))
                 await db.audit(actor,'retain_channel',{},ident)
-                await self.alert('用户请求保留交易频道：'+ident)
+                await self.alert('用户请求保留交易频道：'+ident,notify_admins=True,fallback=inter.channel)
                 await self.post(await self.order(ident),'已取消自动关闭，频道已保留，等待管理员核实。')
-                return await inter.followup.send('已取消自动关闭并通知管理员，请提供付款凭证。',ephemeral=True)
+                return await inter.followup.send('已取消自动关闭并通知管理员，请说明保留原因；如已付款，请提供付款凭证。',ephemeral=True)
             elif action=='confirm':
                 if actor==row['initiator_id']: raise ValueError('请等待交易对方确认')
                 await self.transition(ident,'pending','confirmed',actor)
@@ -991,7 +991,7 @@ class NewTrading(commands.Cog):
     async def before_worker(self): await self.bot.wait_until_ready()
 
     @trade_admin.command(name='review',description='统一处理异常订单、退款、放款和退款后频道关闭')
-    async def review(self,ctx,order_id:str,decision:discord.Option(str,choices=['记录意见','继续履约','允许卖家收款','退还买家','无到账关闭','登记手动退款','暂停关闭','重新通知关闭']),reason:str,deposit_txid:discord.Option(str,description='登记手动退款时必填：原入款交易编号',required=False)=None,withdrawal_id:discord.Option(str,description='登记手动退款时必填：币安提现记录 ID',required=False)=None,refund_address:discord.Option(str,description='登记手动退款时必填：实际 BSC 退款地址',required=False)=None):
+    async def review(self,ctx,order_id:str,decision:discord.Option(str,choices=['记录意见','继续履约','允许卖家收款','退还买家','无到账关闭','关闭未付款已取消频道','登记手动退款','暂停关闭','重新通知关闭']),reason:str,deposit_txid:discord.Option(str,description='登记手动退款时必填：原入款交易编号',required=False)=None,withdrawal_id:discord.Option(str,description='登记手动退款时必填：币安提现记录 ID',required=False)=None,refund_address:discord.Option(str,description='登记手动退款时必填：实际 BSC 退款地址',required=False)=None):
         if not ctx.guild or ctx.guild.id!=cfg.GUILD_ID or not admin(ctx.author,cfg.TRADE_ADMIN_ROLES):
             return await ctx.respond('没有操作权限。',ephemeral=True)
         if decision in ('暂停关闭','重新通知关闭'):
@@ -1061,7 +1061,8 @@ class NewTrading(commands.Cog):
             return await ctx.respond('没有操作权限。',ephemeral=True)
         await ctx.defer(ephemeral=True)
         try:
-            target=await trade_review.confirm(order_id,ctx.author.id,code.strip())
+            async with self.cleanup_lock:
+                target=await trade_review.confirm(order_id,ctx.author.id,code.strip())
         except ValueError as exc: return await ctx.followup.send(str(exc),ephemeral=True)
         except Exception:
             log.exception('Command settlement failed: %s',order_id)
@@ -1069,7 +1070,7 @@ class NewTrading(commands.Cog):
         log.warning('Administrator settlement: actor=%s order=%s target=%s',ctx.author.id,order_id,target)
         try:
             if target=='manual_refunded': await self.manual_close_tick(order_id)
-            else: await self.post(await self.order(order_id))
+            else: await self.post(await self.order(order_id),'管理员已核实并恢复自动关闭，频道约 5 分钟后关闭。' if target=='cancelled' else '')
             await self.alert(f'管理员 {ctx.author.id} 已处理订单 {order_id}：{target}')
         except Exception: log.exception('Settlement saved; notification failed: %s',order_id)
         await ctx.followup.send('处理已记录。手动退款只登记账本，不会再次转账；频道关闭通知会自动重试。' if target=='manual_refunded' else '处理决定已记录，请查看订单当前步骤。',ephemeral=True)

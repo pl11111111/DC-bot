@@ -74,11 +74,12 @@ async def verify_manual(ident,deposit_txid,withdrawal_id,address):
 
 async def prepare(ident,actor,decision,reason,manual=None):
     if not reason.strip() or len(reason)>500: raise ValueError('原因必须为 1–500 字')
-    if decision not in TARGETS and decision!='登记手动退款': raise ValueError('处理决定无效')
+    if decision not in TARGETS and decision not in ('登记手动退款','关闭未付款已取消频道'): raise ValueError('处理决定无效')
     async with db.transaction() as cur:
         await cur.execute('SELECT * FROM orders WHERE id=%s FOR UPDATE',(ident,))
         row=await cur.fetchone()
-        if not row or row['status'] not in ('payment_review','disputed'):
+        closing=decision=='关闭未付款已取消频道'
+        if not row or (row['status']!='cancelled' if closing else row['status'] not in ('payment_review','disputed')):
             raise ValueError('仅能处理付款待核对或争议订单，放款中／已结案订单不能改判')
         await cur.execute('SELECT COALESCE(MAX(id),0) AS revision FROM audit WHERE order_id=%s',(ident,))
         revision=(await cur.fetchone())['revision']
@@ -135,6 +136,19 @@ async def confirm(ident,actor,code):
         await cur.execute('SELECT * FROM deposits WHERE order_key=%s FOR UPDATE',(key,))
         deposit=await cur.fetchone()
         decision=data['decision']; details={'decision':decision,'reason':data['reason'],'from':row['status']}
+        if decision=='关闭未付款已取消频道':
+            if row['status']!='cancelled' or invoice or deposit or Decimal(str(row['credits']))!=0:
+                raise ValueError('仅支持未生成付款账单、没有入款和积分预留的已取消订单；有资金记录请继续核对')
+            await cur.execute(f'SELECT hold FROM `{name}`.tracked_channels WHERE channel_id=%s FOR UPDATE',(row['channel_id'],))
+            tracked=await cur.fetchone()
+            if not tracked or not tracked['hold']: raise ValueError('频道未处于保留状态，无需重复处理')
+            await cur.execute(f'UPDATE `{name}`.tracked_channels SET hold=FALSE,closed_at=UTC_TIMESTAMP() WHERE channel_id=%s',(row['channel_id'],))
+            await cur.execute(f'UPDATE `{name}`.orders SET closed_at=UTC_TIMESTAMP() WHERE id=%s',(ident,))
+            data['used']=True
+            await cur.execute(f'UPDATE `{name}`.settings SET value=%s WHERE setting_key=%s',(db.encode(data),'review_confirm:'+ident))
+            await cur.execute(f'INSERT INTO `{name}`.audit(actor_id,action,details,order_id) VALUES(%s,%s,%s,%s)',
+                              (actor,'release_cancelled_channel',db.encode(details),ident))
+            return 'cancelled'
         if verified:
             if not invoice: raise ValueError('原账单不存在')
             d,w=verified['deposit'],verified['withdrawal']

@@ -184,3 +184,32 @@ class ConfirmationTransactionTests(unittest.IsolatedAsyncioTestCase):
     async def test_revision_change_rejected_inside_transaction(self):
         with self.assertRaises(ValueError): await self.run_confirm(revision=1)
         self.assertEqual(self.outcome,['rollback'])
+
+
+class CancelledChannelTests(unittest.IsolatedAsyncioTestCase):
+    async def check_close(self,invoice=None,deposit=None,payout=None,credit=0,hold=True):
+        from contextlib import asynccontextmanager
+        import json
+        pending=dict(actor=99,decision='关闭未付款已取消频道',reason='verified',status='cancelled',revision=0,expires=time.time()+60,code='1234')
+        row=dict(status='cancelled',credits=credit,channel_id=8)
+        cur=NS(execute=AsyncMock(),fetchone=AsyncMock(side_effect=[{'value':''},payout,row,{'value':json.dumps(pending)},{'revision':0},invoice,deposit,{'hold':hold}]))
+        @asynccontextmanager
+        async def tx(shared=False): yield cur
+        with patch.object(r.db,'setting',AsyncMock(return_value=pending)),patch.object(r.db,'query',AsyncMock(return_value=None)),patch.object(r.db,'transaction',tx):
+            result=await r.confirm('order',99,'1234')
+        return result,cur
+
+    async def test_no_invoice_cancelled_hold_can_be_released_without_money_changes(self):
+        result,cur=await self.check_close()
+        self.assertEqual(result,'cancelled')
+        sql='\n'.join(c.args[0] for c in cur.execute.await_args_list)
+        self.assertIn('SET hold=FALSE,closed_at=UTC_TIMESTAMP()',sql)
+        self.assertIn('SET closed_at=UTC_TIMESTAMP()',sql)
+        self.assertNotIn('UPDATE balances',sql)
+        self.assertNotIn('INSERT INTO payouts',sql)
+        self.assertIn('release_cancelled_channel',str(cur.execute.await_args_list))
+
+    async def test_any_financial_record_or_repeated_close_is_rejected(self):
+        for params in (dict(invoice={'id':'invoice'}),dict(deposit={'id':'deposit'}),dict(payout={'state':'unknown'}),dict(credit=1),dict(hold=False)):
+            with self.subTest(params=params):
+                with self.assertRaises(ValueError): await self.check_close(**params)
