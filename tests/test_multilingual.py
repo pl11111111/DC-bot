@@ -8,6 +8,18 @@ from unittest.mock import AsyncMock,patch
 from utils import trade_language as t,verification_flow as v,article_translation as a
 
 class MultilingualTests(unittest.IsolatedAsyncioTestCase):
+    async def test_notice_scan_pattern_survives_driver_parameter_formatting(self):
+        import pymysql
+        connection=pymysql.connect(defer_connect=True)
+        connection.server_status=0
+        async def query(sql,args=()):
+            rendered=connection.cursor().mogrify(sql,args)
+            self.assertIn("LIKE 'notice:%'",rendered)
+            self.assertEqual(args,('notice:%',))
+            return []
+        with patch.object(a.vf.db,'query',query):
+            await a.sync_existing(NS())
+
     async def test_trade_languages_follow_roles_and_deduplicate(self):
         row=dict(buyer_id=1,seller_id=2,status='paying')
         members={1:NS(roles=[NS(id=12)]),2:NS(roles=[])}

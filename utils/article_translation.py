@@ -5,7 +5,7 @@ from utils import verification_flow as vf
 from utils.verification_text import text
 
 async def sync_existing(cog):
-    rows=await vf.db.query("SELECT s.setting_key,s.value FROM settings s WHERE s.setting_key LIKE 'notice:%' AND NOT EXISTS (SELECT 1 FROM settings done WHERE done.setting_key=CONCAT('translation_button:',SUBSTRING(s.setting_key,8))) LIMIT 10")
+    rows=await vf.db.query("SELECT s.setting_key,s.value FROM settings s WHERE s.setting_key LIKE %s AND NOT EXISTS (SELECT 1 FROM settings done WHERE done.setting_key=CONCAT('translation_button:',SUBSTRING(s.setting_key,8))) LIMIT 10",('notice:%',))
     import json
     for row in rows:
         ident=int(row['setting_key'].split(':',1)[1])
