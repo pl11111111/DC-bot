@@ -11,6 +11,19 @@ from modules.new_trading import NewTrading
 
 
 class RecoveryTests(unittest.IsolatedAsyncioTestCase):
+    async def test_waiting_notice_mentions_both_and_never_announces_success(self):
+        self.row['status']='paying'
+        self.cog.resolve_trade_channel=AsyncMock(return_value=self.channel)
+        self.assertTrue(await self.cog.notify_deposit_wait(self.row))
+        text=self.channel.send.await_args.args[0]
+        self.assertIn('已检测到匹配的入款',text)
+        self.assertIn('尚未确认支付成功',text)
+        self.assertIn('<@1>',text)
+        self.assertIn('<@2>',text)
+        self.row['status']='paid'
+        self.assertFalse(await self.cog.notify_deposit_wait(self.row))
+        self.channel.send.assert_awaited_once()
+
     async def test_deposit_wait_timer_survives_restart_and_limits_alerts(self):
         from utils.shared_payments import DepositNotReady
         stored={}
@@ -18,6 +31,7 @@ class RecoveryTests(unittest.IsolatedAsyncioTestCase):
             if value is not None: stored[key]=dict(value)
             return stored.get(key)
         self.cog.alert=AsyncMock()
+        self.cog.notify_deposit_wait=AsyncMock(return_value=True)
         with patch('modules.new_trading.db.setting',setting),patch('modules.new_trading.time.time',return_value=1000) as clock:
             await self.cog.deposit_status_notice(self.row,DepositNotReady(0))
             self.cog.alert.assert_not_awaited()
@@ -25,6 +39,7 @@ class RecoveryTests(unittest.IsolatedAsyncioTestCase):
             # New cog has no in-memory timer; it must reuse the saved first observation.
             restarted=object.__new__(NewTrading)
             restarted.alert=self.cog.alert
+            restarted.notify_deposit_wait=AsyncMock(return_value=True)
             await restarted.deposit_status_notice(self.row,DepositNotReady(6))
             self.cog.alert.assert_not_awaited()
             clock.return_value=1900
@@ -36,6 +51,8 @@ class RecoveryTests(unittest.IsolatedAsyncioTestCase):
             clock.return_value=5500
             await restarted.deposit_status_notice(self.row,DepositNotReady(6))
             self.assertEqual(self.cog.alert.await_count,2)
+            self.cog.notify_deposit_wait.assert_awaited_once()
+            restarted.notify_deposit_wait.assert_not_awaited()
 
     async def test_abnormal_deposit_alert_includes_status_immediately(self):
         from utils.shared_payments import DepositNotReady

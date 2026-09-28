@@ -10,6 +10,15 @@ from modules.new_trading import NewTrading
 
 
 class PaymentHelpTests(unittest.IsolatedAsyncioTestCase):
+    async def test_dispute_notifies_admin_roles(self):
+        cog,inter=self.setup_case()
+        cog.order.return_value['status']='paid'
+        inter.data['custom_id']='new:trade:dispute:order'
+        cog.transition=AsyncMock()
+        await cog.on_interaction(inter)
+        cog.transition.assert_awaited_once_with('order','paid','disputed',1)
+        self.assertTrue(cog.alert.await_args.kwargs['notify_admins'])
+
     def setup_case(self,actor=1):
         row=dict(id='order',status='paying',buyer_id=1,seller_id=2,channel_id=8,source_id=9)
         cog=object.__new__(NewTrading)

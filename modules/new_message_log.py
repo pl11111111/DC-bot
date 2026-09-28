@@ -7,7 +7,6 @@ import discord
 from discord.ext import commands, tasks
 import config
 from utils import new_store as db
-from modules.new_community import admin
 
 cfg=config.NEW
 log=logging.getLogger(__name__)
@@ -242,31 +241,6 @@ class NewMessageLog(commands.Cog):
     @cleanup.before_loop
     async def before_cleanup(self): await self.bot.wait_until_ready()
 
-    @discord.slash_command(name='new_log_release',description='解除已结案频道的证据保留标记')
-    async def release_hold(self,ctx,channel_id:str,reason:str):
-        if not ctx.guild or ctx.guild.id!=cfg.GUILD_ID or not admin(ctx.author,cfg.TRADE_ADMIN_ROLES):
-            return await ctx.respond('没有操作权限。',ephemeral=True)
-        if not channel_id.isdigit() or not reason.strip():
-            return await ctx.respond('请填写频道 ID 和结案原因。',ephemeral=True)
-        cid=int(channel_id)
-        manual=await db.query("SELECT id FROM orders WHERE (channel_id=%s OR source_id=%s) AND status='manual_refunded'",(cid,cid))
-        for row in manual:
-            closure=await db.setting('manual_close:'+row['id'])
-            if not closure or closure.get('phase')!='deleted':
-                return await ctx.respond('手动退款频道仍待确认或有保留请求，请先通过 /new_trade channel 处理。',ephemeral=True)
-        active=await db.query(f"SELECT o.id FROM orders o WHERE (o.channel_id=%s OR o.source_id=%s) AND {ACTIVE_ORDER_SQL}",(cid,cid))
-        if active: return await ctx.respond('仍有未结束订单，不能解除证据保留。',ephemeral=True)
-        view=discord.ui.View(timeout=180)
-        button=discord.ui.Button(label='确认结案并恢复到期清理',emoji='🧹',style=discord.ButtonStyle.danger)
-        async def confirm(inter):
-            if inter.user.id!=ctx.author.id or not admin(inter.user,cfg.TRADE_ADMIN_ROLES): return
-            await inter.response.defer(ephemeral=True)
-            await db.query(f"UPDATE tracked_channels c SET hold=FALSE,closed_at=UTC_TIMESTAMP() WHERE channel_id=%s AND NOT EXISTS (SELECT 1 FROM orders o WHERE (o.channel_id=c.channel_id OR o.source_id=c.channel_id) AND {ACTIVE_ORDER_SQL})",(cid,))
-            await db.audit(inter.user.id,'release_evidence_hold',{'channel':cid,'reason':reason})
-            await inter.followup.send('已核对并恢复符合条件记录的到期清理。',ephemeral=True)
-        button.callback=confirm
-        view.add_item(button)
-        await ctx.respond('解除后将按保留期限和容量规则清理；请确认已结案。',view=view,ephemeral=True)
 
 def setup(bot):
     if cfg.GUILD_ID and cfg.GUILD_ID!=config.GUILD_ID: bot.add_cog(NewMessageLog(bot))

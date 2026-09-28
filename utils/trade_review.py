@@ -86,8 +86,8 @@ async def prepare(ident,actor,decision,reason,manual=None):
         data={'actor':actor,'decision':decision,'reason':reason.strip(),'status':row['status'],
               'revision':revision,'expires':time.time()+300,'code':code,'manual':manual}
         encoded=db.encode(data)
-        await cur.execute('INSERT INTO settings(setting_key,value) VALUES(%s,%s) ON DUPLICATE KEY UPDATE value=VALUES(value)',
-                          ('review_confirm:'+ident,encoded))
+        await cur.execute('INSERT INTO settings(setting_key,value) VALUES(%s,%s) ON DUPLICATE KEY UPDATE value=%s',
+                          ('review_confirm:'+ident,encoded,encoded))
     return data
 
 
@@ -192,8 +192,9 @@ async def confirm(ident,actor,code):
             await cur.execute(f'UPDATE `{name}`.tracked_channels SET closed_at=UTC_TIMESTAMP(),hold=%s WHERE channel_id=%s',(target=='manual_refunded',row['channel_id']))
         if target=='cancelled' and invoice:
             await cur.execute("UPDATE invoices SET state='expired' WHERE order_key=%s",(key,))
-            await cur.execute(f'INSERT INTO `{name}`.settings(setting_key,value) VALUES(%s,%s) ON DUPLICATE KEY UPDATE value=VALUES(value)',
-                ('closed_unpaid:'+ident,db.encode({'credits_released':True,'actor':actor,'reason':data['reason'],'status':'cancelled','time':time.time()})))
+            record=db.encode({'credits_released':True,'actor':actor,'reason':data['reason'],'status':'cancelled','time':time.time()})
+            await cur.execute(f'INSERT INTO `{name}`.settings(setting_key,value) VALUES(%s,%s) ON DUPLICATE KEY UPDATE value=%s',
+                ('closed_unpaid:'+ident,record,record))
         if target=='manual_refunded':
             await cur.execute(f'INSERT INTO `{name}`.settings(setting_key,value) VALUES(%s,%s)',
                               ('manual_close:'+ident,db.encode({'phase':'unnotified','generation':secrets.token_hex(4),'details':verified})))

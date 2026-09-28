@@ -40,7 +40,7 @@ class NoticeCardTests(unittest.IsolatedAsyncioTestCase):
         cog.bot=NS(user=NS(id=99))
         channel=MagicMock(spec=discord.TextChannel)
         channel.guild=NS(id=2); channel.id=10; channel.mention='#rules'
-        actor=NS(id=7)
+        actor=NS(id=7,guild_permissions=NS(administrator=True),roles=[])
         ctx=NS(guild=NS(id=2),author=actor,respond=AsyncMock(),send_modal=AsyncMock())
         msg=NS(id=20,channel=channel)
         send=AsyncMock(side_effect=[failure,msg] if failure else None,return_value=msg)

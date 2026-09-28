@@ -56,8 +56,8 @@ async def close_unpaid(ident,actor,reason,*,automatic=False):
             if cur.rowcount!=1: raise ValueError('积分预留不一致，停止结案')
         record={'reason':reason,'actor':actor,'status':target,'credits_released':True,
                 'credit_amount':str(credit),'time':time.time(),'payment_conclusion':'no_matching_deposit; not proof of no funds'}
-        await cur.execute(f'INSERT INTO `{name}`.settings(setting_key,value) VALUES(%s,%s) ON DUPLICATE KEY UPDATE value=VALUES(value)',
-                          ('closed_unpaid:'+ident,db.encode(record)))
+        await cur.execute(f'INSERT INTO `{name}`.settings(setting_key,value) VALUES(%s,%s) ON DUPLICATE KEY UPDATE value=%s',
+                          ('closed_unpaid:'+ident,db.encode(record),db.encode(record)))
         await cur.execute(f'UPDATE `{name}`.orders SET status=%s,closed_at=UTC_TIMESTAMP() WHERE id=%s',(target,ident))
         await cur.execute("UPDATE invoices SET state='expired' WHERE order_key=%s",(key,))
         await cur.execute(f'UPDATE `{name}`.tracked_channels SET hold=FALSE,closed_at=UTC_TIMESTAMP() WHERE channel_id=%s',(row['channel_id'],))

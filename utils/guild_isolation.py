@@ -24,6 +24,8 @@ class IsolatedBot(commands.Bot):
             module=getattr(getattr(command,'cog',None),'__module__','')
         if not module and getattr(command,'subcommands',None):
             module=getattr(getattr(command.subcommands[0],'callback',None),'__module__','')
+        if module=='modules.party' or command.name=='party':
+            return
         if module in LEGACY:
             if not config.GUILD_ID: return
             command.guild_ids=[config.GUILD_ID]
@@ -59,6 +61,8 @@ def command_allowed(ctx):
         return False
     callback=getattr(getattr(ctx,'command',None),'callback',None)
     module=getattr(callback,'__module__','')
+    if module=='modules.party':
+        return False
     if module.startswith('modules.new_'):
         if not guild or guild.id!=config.NEW.GUILD_ID:
             return False

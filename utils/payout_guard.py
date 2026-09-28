@@ -52,8 +52,8 @@ async def authorize(cur,key,address,gross,fee,net):
 
 async def freeze(key,reason,item):
     # A persistent latch: a restart must not silently resume automatic payouts.
-    await db.query("INSERT INTO payment_settings(setting_key,value) VALUES('payout_freeze',%s) ON DUPLICATE KEY UPDATE value=VALUES(value)",
-                   (db.encode({'order':key,'reason':reason}),),shared=True)
+    await db.query("INSERT INTO payment_settings(setting_key,value) VALUES('payout_freeze',%s) ON DUPLICATE KEY UPDATE value=%s",
+                   (db.encode({'order':key,'reason':reason}),db.encode({'order':key,'reason':reason})),shared=True)
     await db.query("UPDATE payouts SET state='review',payload=%s WHERE order_key=%s",(db.encode(item),key),shared=True)
 
 

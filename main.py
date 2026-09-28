@@ -65,8 +65,7 @@ COGS_TO_LOAD = [
     "modules.admin",
     "modules.giveaway",
     "modules.market",
-    "modules.party"
-    ,"modules.new_community"
+    "modules.new_community"
     ,"modules.new_trading"
     ,"modules.new_message_log"
     ,"modules.new_moderation"
@@ -202,29 +201,6 @@ async def on_guild_join(guild):
         except Exception as e:
             logger.error(f"创建 #top-inviters 频道时出错: {e}")
     
-    # 如果组队频道不存在则创建
-    party_channel = discord.utils.get(guild.text_channels, name="party-finder")
-    if not party_channel:
-        logger.info(f"在 {guild.name} 中创建 #party-finder 频道")
-        try:
-            party_channel = await guild.create_text_channel("party-finder")
-            await party_channel.send(
-                "此频道用于创建和管理组队。\n"
-                "使用 `/party task` 创建任务组队。\n"
-                "使用 `/party task` 创建任务组队。"
-            )
-            
-            # 向系统频道发送设置消息
-            if guild.system_channel:
-                await guild.system_channel.send(
-                    "我已创建 #party-finder 频道用于创建组队。"
-                    "用户可以在那里使用 `/party task` 命令。"
-                )
-        except Exception as e:
-            logger.error(f"创建 #party-finder 频道时出错: {e}")
-    
-
-
 @bot.event
 async def on_application_command_error(ctx, error):
     """处理斜杠命令中的错误。"""
@@ -376,23 +352,6 @@ def run_bot():
                 else:
                     logger.warning("Social组件没有rank_roles_task属性")
             
-            # 检查party模块的按钮设置任务
-            if hasattr(cog, 'button_setup_task'):
-                status = "运行中" if cog.button_setup_task and not cog.button_setup_task.done() else "未运行"
-                logger.info(f"- 按钮设置任务: {status}")
-                if status == "未运行" and hasattr(cog, 'setup_party_buttons'):
-                    task_issues_found = True
-                    logger.warning("按钮设置任务未运行，尝试重启...")
-                    try:
-                        # 重新创建任务
-                        cog.button_setup_task = bot.loop.create_task(cog.setup_party_buttons())
-                        cog.button_setup_task.set_name("party_button_task_autofix")
-                        if hasattr(cog, '_handle_task_result'):
-                            cog.button_setup_task.add_done_callback(cog._handle_task_result)
-                        logger.info("按钮设置任务已重启")
-                    except Exception as e:
-                        logger.error(f"重启按钮设置任务时出错: {e}", exc_info=True)
-        
         if task_issues_found:
             logger.warning("检测到任务问题并尝试修复，30秒后将再次检查")
             # 30秒后重新检查

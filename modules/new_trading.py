@@ -310,7 +310,7 @@ class NewTrading(commands.Cog):
                     await self.transition(ident,'pending','cancelled',user.id,{'reason':'channel creation/setup failed'})
                     raise
                 await db.audit(user.id,'create',{'terms':terms.value,'source':source},ident)
-                await self.post(await self.order(ident),texts()['payment_notice'])
+                await self.post(await self.order(ident))
                 # The durable notification worker retries participant mentions after failures.
                 await inter.followup.send(f'交易已创建：{channel.mention}',ephemeral=True)
             except ValueError as exc:
@@ -517,7 +517,7 @@ class NewTrading(commands.Cog):
             elif action=='dispute':
                 if row['status'] not in ('paid','shipped'): raise ValueError('当前无法发起争议，请联系管理员')
                 await self.transition(ident,row['status'],'disputed',actor)
-                await self.alert('新社群订单发生争议：'+ident)
+                await self.alert('新社群订单发生争议：'+ident,notify_admins=True,fallback=inter.channel)
             else: return
             await self.post(await self.order(ident))
             await inter.followup.send('操作完成。',ephemeral=True)
@@ -752,7 +752,24 @@ class NewTrading(commands.Cog):
                 await self.alert(f'{text}：{row["id"]}；{exc}。请勿重复付款。',notify_admins=True)
                 state['alert_at']=now
             if state!=previous: await db.setting(key,state)
+            if exc.waiting and not state.get('channel_notified'):
+                if await self.notify_deposit_wait(row):
+                    state['channel_notified']=True
+                    await db.setting(key,state)
         except Exception: log.exception('Deposit status notification failed: %s',row['id'])
+
+    async def notify_deposit_wait(self,row):
+        async with self.post_lock:
+            fresh=await self.order(row['id'])
+            if not fresh or fresh['status'] not in ('paying','payment_timeout','payment_review'):
+                return False
+            channel=await self.resolve_trade_channel(fresh)
+            if not channel: return False
+            content,mentions=participant_notice(fresh,'⏳ 已检测到匹配的入款，正在等待支付平台确认。',
+                '请勿重复付款或补款。确认完成后 bot 会更新进度；超时或异常订单仍需管理员核实。',
+                '目前尚未确认支付成功。请等待 bot 显示「支付已确认」并发出发货通知后，再交付商品。')
+            await channel.send(content,allowed_mentions=mentions)
+            return True
 
     async def recovery_alert(self,row):
         try:
@@ -973,10 +990,16 @@ class NewTrading(commands.Cog):
     @worker.before_loop
     async def before_worker(self): await self.bot.wait_until_ready()
 
-    @trade_admin.command(name='review',description='核对异常订单，生成一次性指令确认码')
-    async def review(self,ctx,order_id:str,decision:discord.Option(str,choices=['记录意见','继续履约','允许卖家收款','退还买家','无到账关闭']),reason:str):
+    @trade_admin.command(name='review',description='统一处理异常订单、退款、放款和退款后频道关闭')
+    async def review(self,ctx,order_id:str,decision:discord.Option(str,choices=['记录意见','继续履约','允许卖家收款','退还买家','无到账关闭','登记手动退款','暂停关闭','重新通知关闭']),reason:str,deposit_txid:discord.Option(str,description='登记手动退款时必填：原入款交易编号',required=False)=None,withdrawal_id:discord.Option(str,description='登记手动退款时必填：币安提现记录 ID',required=False)=None,refund_address:discord.Option(str,description='登记手动退款时必填：实际 BSC 退款地址',required=False)=None):
         if not ctx.guild or ctx.guild.id!=cfg.GUILD_ID or not admin(ctx.author,cfg.TRADE_ADMIN_ROLES):
             return await ctx.respond('没有操作权限。',ephemeral=True)
+        if decision in ('暂停关闭','重新通知关闭'):
+            return await self.manage_refund_channel(ctx,order_id,decision,reason)
+        if decision=='登记手动退款':
+            if not all((deposit_txid,withdrawal_id,refund_address)):
+                return await ctx.respond('登记手动退款需要填写原入款交易编号、币安提现记录 ID 和退款地址。',ephemeral=True)
+            return await self.manual_refund(ctx,order_id,deposit_txid,withdrawal_id,refund_address,reason)
         await ctx.defer(ephemeral=True)
         try:
             row=await self.order(order_id)
@@ -993,13 +1016,12 @@ class NewTrading(commands.Cog):
             inv=await db.query('SELECT * FROM invoices WHERE order_key=%s',('new:'+order_id,),shared=True,one=True)
             if inv: await payments.find_deposit('new:'+order_id,inv['address'],inv['amount'])
             data=await trade_review.prepare(order_id,ctx.author.id,decision,reason)
-            await ctx.followup.send(f"订单 {order_id}\n决定：{decision}\n原因：{reason}\n金额错误仅能核实后手动退款；无到账关闭表示你已核实确实未收到任何付款，不能只凭 bot 未匹配。\n确认码 5 分钟有效：\n`/new_trade confirm order_id:{order_id} code:{data['code']}`",ephemeral=True,allowed_mentions=discord.AllowedMentions.none())
+            await ctx.followup.send(f"订单 {order_id}\n决定：{decision}\n原因：{reason}\n退还买家：退还实际到账全额（含已付担保费和尾数），仅扣网络费。\n允许卖家收款：正常收取担保费，卖家领取商品价款扣网络费。\n金额错误仅能核实后手动退款；无到账关闭表示你已核实确实未收到任何付款，不能只凭 bot 未匹配。\n请核对后点击下方确认，5 分钟内有效。",view=self.review_confirmation(ctx,order_id,data),ephemeral=True,allowed_mentions=discord.AllowedMentions.none())
         except ValueError as exc: await ctx.followup.send(str(exc),ephemeral=True)
         except Exception:
             log.exception('Review preview failed')
             await ctx.followup.send('无法生成预览，请稍后核对。',ephemeral=True)
 
-    @trade_admin.command(name='refund',description='登记本账户已完成的外部 BSC 手动退款（不会转账）')
     async def manual_refund(self,ctx,order_id:str,deposit_txid:str,withdrawal_id:str,refund_address:str,reason:str):
         if not ctx.guild or ctx.guild.id!=cfg.GUILD_ID or not admin(ctx.author,cfg.TRADE_ADMIN_ROLES):
             return await ctx.respond('没有操作权限。',ephemeral=True)
@@ -1008,13 +1030,32 @@ class NewTrading(commands.Cog):
             verified=await trade_review.verify_manual(order_id,deposit_txid.strip(),withdrawal_id.strip(),refund_address.strip())
             data=await trade_review.prepare(order_id,ctx.author.id,'登记手动退款',reason,
                 {'deposit_txid':deposit_txid.strip(),'withdrawal_id':withdrawal_id.strip(),'address':refund_address.strip(),'evidence':verified})
-            await ctx.followup.send(f"仅登记已发生的手动退款，不会转账。\n订单 {order_id}\n原入款 {verified['received']} USDT\n网络费 {verified['fee']} USDT\n退款到账 {verified['net']} USDT\n地址 `{verified['address']}`\n原因：{reason}\n确认表示你已核实该入款属于本订单买家，且退款地址已与买家核对。流水存在本身不证明归属。\n确认码 5 分钟有效：\n`/new_trade confirm order_id:{order_id} code:{data['code']}`",ephemeral=True,allowed_mentions=discord.AllowedMentions.none())
+            await ctx.followup.send(f"仅登记已发生的手动退款，不会转账。\n订单 {order_id}\n原入款 {verified['received']} USDT\n网络费 {verified['fee']} USDT\n退款到账 {verified['net']} USDT\n地址 `{verified['address']}`\n原因：{reason}\n确认表示你已核实该入款属于本订单买家，且退款地址已与买家核对。流水存在本身不证明归属。\n请核对后点击下方确认，5 分钟内有效。",view=self.review_confirmation(ctx,order_id,data),ephemeral=True,allowed_mentions=discord.AllowedMentions.none())
         except ValueError as exc: await ctx.followup.send(str(exc),ephemeral=True)
         except Exception:
             log.exception('Manual refund preview failed')
             await ctx.followup.send('流水核对失败，频道继续保留；未登记退款成功。',ephemeral=True)
 
-    @trade_admin.command(name='confirm',description='通过一次性确认码执行已预览的处理决定')
+    def review_confirmation(self,ctx,order_id,data):
+        view=discord.ui.View(timeout=300)
+        button=discord.ui.Button(label='确认处理决定',emoji='✅',style=discord.ButtonStyle.danger)
+        lock=asyncio.Lock()
+        async def accepted(inter):
+            if (not inter.guild or inter.guild.id!=cfg.GUILD_ID or inter.user.id!=ctx.author.id
+                    or not admin(inter.user,cfg.TRADE_ADMIN_ROLES)):
+                return await inter.response.send_message('没有操作权限。',ephemeral=True)
+            async with lock:
+                if button.disabled:
+                    return await inter.response.send_message('此预览已处理，请重新使用 /new_trade review 核对当前状态。',ephemeral=True)
+                # Database confirmation is actor-bound, revision-checked and single-use.
+                await self.confirm_review(discord.ApplicationContext(self.bot,inter),order_id,data['code'])
+                button.disabled=True
+                try: await inter.edit_original_response(view=view)
+                except discord.HTTPException: log.info('Review confirmation message unavailable: %s',order_id)
+        button.callback=accepted
+        view.add_item(button)
+        return view
+
     async def confirm_review(self,ctx,order_id:str,code:str):
         if not ctx.guild or ctx.guild.id!=cfg.GUILD_ID or not admin(ctx.author,cfg.TRADE_ADMIN_ROLES):
             return await ctx.respond('没有操作权限。',ephemeral=True)
@@ -1033,7 +1074,6 @@ class NewTrading(commands.Cog):
         except Exception: log.exception('Settlement saved; notification failed: %s',order_id)
         await ctx.followup.send('处理已记录。手动退款只登记账本，不会再次转账；频道关闭通知会自动重试。' if target=='manual_refunded' else '处理决定已记录，请查看订单当前步骤。',ephemeral=True)
 
-    @trade_admin.command(name='channel',description='手动退款后暂停关闭或重新发起用户关闭确认')
     async def manage_refund_channel(self,ctx,order_id:str,action:discord.Option(str,choices=['暂停关闭','重新通知关闭']),reason:str):
         if not ctx.guild or ctx.guild.id!=cfg.GUILD_ID or not admin(ctx.author,cfg.TRADE_ADMIN_ROLES):
             return await ctx.respond('没有操作权限。',ephemeral=True)

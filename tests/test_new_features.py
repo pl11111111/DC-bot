@@ -204,11 +204,12 @@ class LoadTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(command.guild_ids,[1],command.name)
         names={c.name for c in bot.pending_application_commands if c.guild_ids==[2]}
         self.assertNotIn('new_trade_close_test',names)
+        self.assertNotIn('new_log_release',names)
         self.assertNotIn('new_trade_review',names)
         trade=next(c for c in bot.pending_application_commands if c.name=='new_trade')
-        self.assertEqual({c.name for c in trade.subcommands},{'review','refund','confirm','channel'})
-        party=next(c for c in bot.pending_application_commands if c.name=='party')
-        self.assertNotIn('boss',{c.name for c in party.subcommands})
+        self.assertEqual({c.name for c in trade.subcommands},{'review'})
+        self.assertNotIn('modules.party',main.COGS_TO_LOAD)
+        self.assertNotIn('party',{c.name for c in bot.pending_application_commands})
         for command in bot.pending_application_commands:
             if command.guild_ids==[2] and isinstance(command,(discord.SlashCommand,discord.SlashCommandGroup)):
                 self.assertTrue(command.default_member_permissions.administrator)
@@ -223,6 +224,22 @@ class LoadTests(unittest.IsolatedAsyncioTestCase):
         await asyncio.gather(*pending,return_exceptions=True)
 
 class TradeCommandPermissionTests(unittest.IsolatedAsyncioTestCase):
+    async def test_confirmation_checks_actor_role_guild_and_repeat_clicks(self):
+        cog=object.__new__(NewTrading)
+        cog.bot=NS()
+        cog.confirm_review=AsyncMock()
+        ctx=NS(author=NS(id=5))
+        view=cog.review_confirmation(ctx,'order',{'code':'nonce'})
+        def click(uid=5,gid=2,allowed=True):
+            return NS(guild=NS(id=gid),user=NS(id=uid,guild_permissions=NS(administrator=allowed),roles=[]),
+                      response=NS(send_message=AsyncMock()),edit_original_response=AsyncMock())
+        for args in ((6,2,True),(5,1,True),(5,2,False)):
+            await view.children[0].callback(click(*args))
+        cog.confirm_review.assert_not_awaited()
+        with patch('modules.new_trading.discord.ApplicationContext',return_value=ctx):
+            await asyncio.gather(view.children[0].callback(click()),view.children[0].callback(click()))
+        cog.confirm_review.assert_awaited_once_with(ctx,'order','nonce')
+
     async def test_management_callbacks_deny_ordinary_users_and_wrong_guild(self):
         from modules.new_trading import NewTrading
         cog=object.__new__(NewTrading)
@@ -233,7 +250,7 @@ class TradeCommandPermissionTests(unittest.IsolatedAsyncioTestCase):
         for guild,administrator in ((NS(id=2),False),(NS(id=1),True),(None,True)):
             for command,args in cases:
                 ctx=NS(guild=guild,author=NS(guild_permissions=NS(administrator=administrator),roles=[]),respond=AsyncMock(),defer=AsyncMock())
-                await command.callback(cog,ctx,order_id='order',**args)
+                await getattr(command,'callback',command)(cog,ctx,order_id='order',**args)
                 ctx.respond.assert_awaited_once_with('没有操作权限。',ephemeral=True)
                 ctx.defer.assert_not_awaited()
 
