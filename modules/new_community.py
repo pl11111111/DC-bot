@@ -130,6 +130,18 @@ class NewCommunity(commands.Cog):
             guild=self.bot.get_guild(cfg.GUILD_ID)
             if not guild:
                 return
+            # Apply an explicitly shipped copy revision once; later admin edits survive.
+            revision=texts().get('verify_revision')
+            if revision and cfg.VERIFY_CHANNEL_ID and await db.setting('verify_copy_revision')!=revision:
+                async with self.panel_lock:
+                    raw=texts()
+                    key='community_content:channel:'+str(cfg.VERIFY_CHANNEL_ID)
+                    saved=await db.setting(key)
+                    if not saved:
+                        key='community_content:verify'
+                        saved=await db.setting(key) or {}
+                    await db.setting(key,{**saved,'title':raw['verify_title'],'body':raw['verify_body'],'verification':True})
+                    await db.setting('verify_copy_revision',revision)
             # Publishing permissions or malformed guide configuration must not
             # interrupt verification, language panels, or invitation maintenance.
             try:
@@ -138,6 +150,12 @@ class NewCommunity(commands.Cog):
                     await payment_guide.sync(self.bot)
             except Exception:
                 log.exception('Payment guide publication failed')
+            try:
+                from utils.article_translation import sync_existing
+                async with self.panel_lock:
+                    await sync_existing(self)
+            except Exception:
+                log.exception('Existing notice translation button update failed')
             if not self.ready:
                 try:
                     await self.snapshot_invites(guild)
@@ -234,10 +252,13 @@ class NewCommunity(commands.Cog):
         if not interaction.guild or interaction.guild.id!=cfg.GUILD_ID:
             return
         custom=(interaction.data or {}).get('custom_id','')
-        if custom not in ('new:verify','new:translate','new:invites','new:invite_link') and not custom.startswith('new:lang:'):
+        if custom not in ('new:verify','new:translate','new:article_translate','new:invites','new:invite_link') and not custom.startswith('new:lang:'):
             return
         await interaction.response.defer(ephemeral=True)
         try:
+            if custom=='new:article_translate':
+                from utils.article_translation import start
+                return await start(self,interaction)
             if custom in ('new:verify','new:translate'):
                 from utils.verification_flow import start
                 return await start(self,interaction,translate=custom=='new:translate')

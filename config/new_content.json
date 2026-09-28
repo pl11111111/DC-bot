@@ -1,7 +1,8 @@
 {
-  "verify_title": "Community Rules / 社群规则",
-  "verify_body": "test",
+  "verify_title": "Welcome to the community!",
+  "verify_body": "Complete the steps below to unlock the server.\n\n### 1. Choose Your Language\nClick **Verify** and select your preferred language. Your Discord language is used as the initial suggestion; you can change it before continuing.\n\n**English is the default. You may select one additional language, or none.**\n\n### 2. Read the Rules\nRead the rules in <#1546465989896568873>. Make sure you understand and agree to follow all community rules, then continue to the agreement step.\n\n### 3. Agree & Get LV1 Access\nClick **✅ I Have Read & Agree to the Rules** in the private verification window.\n\nYou will receive **LV1**, unlocking the main server channels and features. If you selected an additional language, its role will also be assigned, unlocking dedicated language channels, language-specific bot features and other features available for that language.\n\nYour community role will automatically level up based on your activity and participation, unlocking more features as you progress.\n\nYou can change your language later in <#1546918875235360928>.\n\n### 4. Explore the Community\nOnce verified, explore the server, join conversations and enjoy the community!\n\nUse **Translate** to view this information in your preferred language. Viewing a translation does not complete verification.",
   "banners": {},
   "forum_prompt": "与发布者沟通并确认商品、价格和交付条件后，可点击下方按钮发起 bot 担保交易。",
-  "payment_notice": "请确保收款账户实际到账金额精确等于显示金额，转出费用由买家承担。卖家收款时如产生网络费，从商品价款中扣除。"
+  "payment_notice": "请确保收款账户实际到账金额精确等于显示金额，转出费用由买家承担。卖家收款时如产生网络费，从商品价款中扣除。",
+  "verify_revision": "2026-09-29-language-first-v1"
 }

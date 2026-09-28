@@ -42,7 +42,7 @@ async def sync(bot):
     body=SOURCE.read_text(encoding='utf-8').strip()
     # The forum already displays the post title; avoid a second title in the card.
     render=notice_card.layout('',body)
-    digest=hashlib.sha256((TITLE+'\nbody-only\n'+body).encode()).hexdigest()
+    digest=hashlib.sha256((TITLE+'\nbody-only-translate-v1\n'+body).encode()).hexdigest()
     key='payment_guide:'+str(forum.id)
     saved=await db.setting(key)
     message=None

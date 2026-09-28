@@ -58,7 +58,7 @@ class StaleButtonTests(unittest.IsolatedAsyncioTestCase):
         cog=object.__new__(NewTrading)
         cog.deliver_step_notification=AsyncMock()
         old=NS(edit=AsyncMock())
-        channel=NS(id=8,guild=NS(id=2),fetch_message=AsyncMock(return_value=old))
+        channel=NS(id=8,guild=NS(id=2,get_member=lambda uid:NS(roles=[])),fetch_message=AsyncMock(return_value=old))
         cog.bot=NS(get_channel=lambda cid:channel)
         cog.send_step=AsyncMock(return_value=NS(id=11))
         cog.notify_step=AsyncMock()

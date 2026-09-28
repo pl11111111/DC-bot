@@ -64,6 +64,8 @@ def translated(original,language):
     if language=='English': return original,False
     path=Path(__file__).resolve().parent.parent/'config'/'verify_translations.json'
     records=json.loads(path.read_text(encoding='utf-8'))
+    article_path=path.with_name('article_translations.json')
+    if article_path.exists(): records+=json.loads(article_path.read_text(encoding='utf-8'))
     for item in records:
         if item.get('source')==original:
             content=item.get('translations',{}).get(language)

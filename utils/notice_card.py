@@ -6,6 +6,9 @@ from utils.trade_card import V2
 
 
 def layout(title,body,banner='',view=None,intro='',attachment_banner=False):
+    if view is None:
+        view=discord.ui.View(timeout=None)
+        view.add_item(discord.ui.Button(label='Translate',emoji='🌐',custom_id='new:article_translate'))
     text='\n\n'.join(x for x in (intro,'## '+title if title else '',body) if x)
     if len(text)>4000: raise ValueError('标题和正文合计过长，请缩短至 4000 字以内。')
     children=[]

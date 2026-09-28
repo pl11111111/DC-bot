@@ -103,6 +103,9 @@ class NewTrading(commands.Cog):
             'refunded':[('保留频道并通知管理员','keep')],
             'test_closed':[('保留频道并通知管理员','keep')],
         }.get(row['status'],[])
+        if row.get('_languages'):
+            from utils.trade_language import BUTTONS
+            options=[(BUTTONS.get(action,label),action) for label,action in options]
         return buttons([(label,'trade:'+action+':'+ident) for label,action in options])
 
     async def send_step(self,channel,status,embed=None,view=None,qr_file=None):
@@ -187,10 +190,8 @@ class NewTrading(commands.Cog):
     async def _post(self,row,extra=''):
         channel=await self.resolve_trade_channel(row)
         if channel is None: return
-        if row['status']=='expired':
-            extra+='\n订单超时，订单名额已释放，频道即将清理。'
-        elif row['status'] in TERMINAL and row['status']!='manual_refunded':
-            extra+='\n频道将在约 5 分钟后清理。如需保留，请点击下方按钮。'
+        from utils import trade_language
+        row=await trade_language.assign(row,channel.guild)
         qr_file=None
         embed=self.order_embed(row,extra)
         if row['status']=='paying':
@@ -198,6 +199,7 @@ class NewTrading(commands.Cog):
             if not invoice: raise ValueError('付款账单缺失，请管理员核对，勿自行转账')
             embed=trade_payment_ui.payment_embed(row,invoice)
             qr_file=trade_payment_ui.qr_file(invoice['address'])
+        embed=trade_language.localize_embed(embed,row)
         key='trade_panel:'+row['id']
         previous=await db.setting(key)
         try:
@@ -219,6 +221,11 @@ class NewTrading(commands.Cog):
                 log.warning('Could not retire prior order buttons: %s',row['id'])
 
     async def notify_step(self,channel,row):
+        if isinstance(getattr(channel,'guild',None),discord.Guild):
+            from utils import trade_language
+            row=await trade_language.assign(row,channel.guild)
+            text,mentions=trade_language.notify(row)
+            return await channel.send(text,allowed_mentions=mentions)
         counterpart='请核对交易内容，并在 30 分钟内点击「确认交易」。'
         waiting='请等待交易对方确认；未确认前请勿付款或发货。'
         buyer_started=row.get('initiator_id',row['buyer_id'])==row['buyer_id']
@@ -768,6 +775,10 @@ class NewTrading(commands.Cog):
             content,mentions=participant_notice(fresh,'⏳ 已检测到匹配的入款，正在等待支付平台确认。',
                 '请勿重复付款或补款。确认完成后 bot 会更新进度；超时或异常订单仍需管理员核实。',
                 '目前尚未确认支付成功。请等待 bot 显示「支付已确认」并发出发货通知后，再交付商品。')
+            from utils import trade_language
+            if isinstance(getattr(channel,'guild',None),discord.Guild):
+                fresh=await trade_language.assign(fresh,channel.guild)
+                content,mentions=trade_language.notify(fresh,'waiting')
             await channel.send(content,allowed_mentions=mentions)
             return True
 
