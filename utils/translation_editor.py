@@ -23,9 +23,12 @@ async def ensure_button(message,bot_id):
     import json
     components=raw.get('components',[])
     serialized=json.dumps(components)
-    if 'new:translate' in serialized or 'new:article_translate' in serialized: return
-    if len(components)>=5: raise ValueError('消息按钮已满，请管理员调整原消息布局。')
-    components.append({'type':1,'components':[{'type':2,'style':2,'label':'Translate','custom_id':'new:article_translate','emoji':{'name':'🌐'}}]})
+    changed=articles.style_translation_buttons(components)
+    if 'new:translate' in serialized or 'new:article_translate' in serialized:
+        if not changed: return
+    else:
+        if len(components)>=5: raise ValueError('消息按钮已满，请管理员调整原消息布局。')
+        components.append({'type':1,'components':[{'type':2,'style':1,'label':'Translate','custom_id':'new:article_translate','emoji':{'name':'🌐'}}]})
     await message._state.http.request(Route('PATCH','/channels/{channel_id}/messages/{message_id}',**route),
         json={'components':components,'allowed_mentions':{'parse':[]}})
 

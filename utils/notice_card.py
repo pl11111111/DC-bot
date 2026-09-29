@@ -5,10 +5,10 @@ from discord.webhook.async_ import async_context
 from utils.trade_card import V2
 
 
-def layout(title,body,banner='',view=None,intro='',attachment_banner=False):
+def layout(title,body,banner='',view=None,intro='',attachment_banner=False,buttons_below=False):
     if view is None:
         view=discord.ui.View(timeout=None)
-        view.add_item(discord.ui.Button(label='Translate',emoji='🌐',custom_id='new:article_translate'))
+        view.add_item(discord.ui.Button(label='Translate',emoji='🌐',custom_id='new:article_translate',style=discord.ButtonStyle.primary))
     text='\n\n'.join(x for x in (intro,'## '+title if title else '',body) if x)
     if len(text)>4000: raise ValueError('标题和正文合计过长，请缩短至 4000 字以内。')
     children=[]
@@ -16,7 +16,7 @@ def layout(title,body,banner='',view=None,intro='',attachment_banner=False):
         if not banner.startswith('https://') and not (attachment_banner and banner.startswith('attachment://')): raise ValueError('横幅请使用 HTTPS 图片链接')
         children.append({'type':12,'items':[{'media':{'url':banner}}]})
     if text: children.append({'type':10,'content':text})
-    external_buttons=bool(view and any(getattr(button,'custom_id',None)=='new:verify' for button in view.children))
+    external_buttons=buttons_below or bool(view and any(getattr(button,'custom_id',None)=='new:verify' for button in view.children))
     if view and view.children and not external_buttons: children.extend(view.to_components())
     result=[{'type':17,'accent_color':0x9854DE,'components':children}]
     if external_buttons: result.extend(view.to_components())

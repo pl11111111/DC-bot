@@ -5,8 +5,17 @@ from utils import verification_flow as vf
 from utils.verification_text import text
 from utils import translation_store
 
+def style_translation_buttons(components):
+    changed=False
+    for item in components:
+        if item.get('custom_id')=='new:article_translate' and item.get('style')!=1:
+            item['style']=1
+            changed=True
+        changed=style_translation_buttons(item.get('components',[])) or changed
+    return changed
+
 async def sync_existing(cog):
-    rows=await vf.db.query("SELECT s.setting_key,s.value FROM settings s WHERE s.setting_key LIKE %s AND NOT EXISTS (SELECT 1 FROM settings done WHERE done.setting_key=CONCAT('translation_button:',SUBSTRING(s.setting_key,8))) LIMIT 10",('notice:%',))
+    rows=await vf.db.query("SELECT s.setting_key,s.value FROM settings s WHERE s.setting_key LIKE %s AND NOT EXISTS (SELECT 1 FROM settings done WHERE done.setting_key=CONCAT('translation_button_v2:',SUBSTRING(s.setting_key,8))) LIMIT 10",('notice:%',))
     import json
     for row in rows:
         ident=int(row['setting_key'].split(':',1)[1])
@@ -16,16 +25,19 @@ async def sync_existing(cog):
         try:
             raw=await channel._state.http.request(Route('GET','/channels/{channel_id}/messages/{message_id}',**route))
         except discord.NotFound:
-            await vf.db.setting('translation_button:'+str(ident),True)
+            await vf.db.setting('translation_button_v2:'+str(ident),True)
             continue
         if int(raw['author']['id'])!=cog.bot.user.id: continue
         components=raw.get('components',[])
+        changed=style_translation_buttons(components)
         if 'new:article_translate' not in json.dumps(components):
             if len(components)>=5: continue
-            components.append({'type':1,'components':[{'type':2,'style':2,'label':'Translate','custom_id':'new:article_translate','emoji':{'name':'🌐'}}]})
+            components.append({'type':1,'components':[{'type':2,'style':1,'label':'Translate','custom_id':'new:article_translate','emoji':{'name':'🌐'}}]})
+            changed=True
+        if changed:
             await channel._state.http.request(Route('PATCH','/channels/{channel_id}/messages/{message_id}',**route),
                 json={'components':components,'allowed_mentions':{'parse':[]}})
-        await vf.db.setting('translation_button:'+str(ident),True)
+        await vf.db.setting('translation_button_v2:'+str(ident),True)
 
 async def read(message,bot_id):
     raw=await message._state.http.request(Route('GET','/channels/{channel_id}/messages/{message_id}',
