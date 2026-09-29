@@ -5,7 +5,7 @@ from pathlib import Path
 import discord
 import config
 from utils import new_store as db
-from utils.verification_text import text
+from utils.verification_text import text, ROWS
 
 cfg=config.NEW
 LOCALES={'zh':'中文','id':'Bahasa Indonesia','ja':'日本語','ko':'한국어',
@@ -96,7 +96,7 @@ class VerificationView(discord.ui.View):
         ui=text(self.ui_language)
         if self.stage=='language' or self.translate:
             menu=discord.ui.Select(placeholder=ui['choose'],options=[
-                discord.SelectOption(label=name,value=name,default=name==self.language) for name in languages()])
+                discord.SelectOption(label=name,value=name,default=name==self.language) for name in (list(ROWS) if self.translate else languages())])
             async def choose(inter):
                 self.language=menu.values[0]
                 self.ui_language=self.language
@@ -185,10 +185,10 @@ class VerificationView(discord.ui.View):
 
 async def start(cog,inter,translate=False):
     original=await source(inter.channel_id,inter.message.id)
-    saved=await db.setting('verify_language:'+str(inter.user.id))
-    member=await inter.guild.fetch_member(inter.user.id)
-    language=preferred(member,inter.locale,saved) if translate else client_language(inter.locale)
-    if language not in languages(): language='English'
+    # The public verification entry follows this click's client locale, even if
+    # a previous visit saved a preference. Reading translations needs no role.
+    language=client_language(getattr(inter,'locale',None))
+    if language not in (ROWS if translate else languages()): language='English'
     view=VerificationView(cog,inter,original,language,translate)
     await view.refresh_translation()
     await inter.followup.send(embed=view.render(),view=view,ephemeral=True,allowed_mentions=discord.AllowedMentions.none())

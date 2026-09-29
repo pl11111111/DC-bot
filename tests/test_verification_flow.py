@@ -7,6 +7,18 @@ from unittest.mock import AsyncMock,patch
 from utils import verification_flow as f
 
 class VerificationTests(unittest.IsolatedAsyncioTestCase):
+    async def test_public_translate_uses_click_locale_without_language_role(self):
+        self.inter.followup=NS(send=AsyncMock())
+        with patch.object(f,'source',AsyncMock(return_value=self.original)),patch.object(f.cfg,'LANGUAGES',{}),patch.object(f.VerificationView,'refresh_translation',AsyncMock()),patch.object(f.db,'setting',AsyncMock(return_value='English')) as saved:
+            for locale,expected in [('zh-TW','中文'),('ja','日本語'),('en-US','English'),('fr','English'),(None,'English')]:
+                self.inter.locale=locale
+                await f.start(self.cog,self.inter,translate=True)
+                view=self.inter.followup.send.call_args.kwargs['view']
+                self.assertEqual(view.language,expected)
+                self.assertEqual(view.ui_language,expected)
+                self.assertTrue(any(o.value==expected and o.default for o in view.children[0].options))
+            saved.assert_not_awaited()
+
     async def test_client_localizes_initial_interface_independently_of_selected_role(self):
         for locale,expected in [('ja','次へ'),('zh-TW','下一步'),('fr','Next'),('en-US','Next'),('ko','다음')]:
             self.inter.locale=locale
