@@ -31,7 +31,63 @@
       "Deposit address",
       "Payment deadline",
       "Order"
-    ]
+    ],
+    "pending_sender": "You sent this trade request. Please wait for the other participant to confirm. Do not pay or deliver yet.",
+    "pending_recipient": "You received a trade request. Review the item, price and terms, then click Confirm trade within 30 minutes. Do not pay or deliver yet.",
+    "participants": {
+      "confirmed": {
+        "buyer": "Get payment information within 15 minutes to see the exact amount required.",
+        "seller": "Wait for the bot to confirm payment and notify you to deliver. Do not deliver based on screenshots or pay for the buyer."
+      },
+      "invoicing": {
+        "buyer": "Generating payment information. Do not transfer yet.",
+        "seller": "Wait for the bot to confirm payment and notify you to deliver. Do not deliver based on screenshots or pay for the buyer."
+      },
+      "paying": {
+        "buyer": "Pay the exact displayed USDT amount via BSC/BEP20, including all 6 decimals. Do not pay twice or top up the difference yourself.",
+        "seller": "Wait for the bot to confirm payment and notify you to deliver. Do not deliver based on screenshots or pay for the buyer."
+      },
+      "waiting": {
+        "buyer": "A matching deposit was detected. Wait for platform confirmation; do not pay again.",
+        "seller": "Wait for the bot to confirm payment and notify you to deliver. Do not deliver based on screenshots or pay for the buyer."
+      },
+      "paid": {
+        "buyer": "Payment confirmed. Please wait for the seller to deliver the item.",
+        "seller": "Payment confirmed. Deliver the item, then click Mark as shipped."
+      },
+      "shipped": {
+        "buyer": "Buyer: check the item and confirm receipt only after receiving it. Open a dispute if needed.",
+        "seller": "You marked the item as shipped. Wait for the buyer to check and confirm receipt."
+      },
+      "receipt_confirmed": {
+        "buyer": "The seller can claim payment. You do not need to pay again; wait for settlement.",
+        "seller": "Seller: claim payment and check the address and network fee. The escrow fee is charged; the network fee is deducted from the item price."
+      },
+      "releasing": {
+        "buyer": "The seller can claim payment. You do not need to pay again; wait for settlement.",
+        "seller": "Processing the transfer. Do not submit another request."
+      },
+      "refund_ready": {
+        "buyer": "Buyer: claim the refund. The full received amount, including the paid escrow fee and identifying decimals, is refunded less the network fee.",
+        "seller": "The buyer refund is being handled. Do not deliver or claim seller payment."
+      },
+      "releasing_refund": {
+        "buyer": "Processing the transfer. Do not submit another request.",
+        "seller": "The buyer refund is being handled. Do not deliver or claim seller payment."
+      },
+      "refunded": {
+        "buyer": "Refund completed. Please check your refund record.",
+        "seller": "The buyer refund is complete. This order is closed; do not deliver or claim seller payment."
+      },
+      "completed": {
+        "buyer": "Trade completed. No further payment is needed.",
+        "seller": "Trade completed. Check the transfer record. The channel closes in about 5 minutes unless retained."
+      },
+      "manual_refunded": {
+        "buyer": "Refund completed. Please check your refund record.",
+        "seller": "The buyer refund is complete. This order is closed; do not deliver or claim seller payment."
+      }
+    }
   },
   "中文": {
     "pending": "请交易对方在 30 分钟内确认。暂勿付款或发货。",
@@ -65,7 +121,63 @@
       "收款地址",
       "付款截止",
       "订单"
-    ]
+    ],
+    "pending_sender": "你已发起交易，请等待对方确认。暂勿付款或发货。",
+    "pending_recipient": "你收到交易邀请，请核对商品、价格和约定，并在 30 分钟内点击「Confirm trade（确认交易）」。暂勿付款或发货。",
+    "participants": {
+      "confirmed": {
+        "buyer": "请在 15 分钟内点击「Get payment information（获取付款信息）」，查看实际应到账金额。",
+        "seller": "请等待 bot 确认到账并发出发货通知后再交付商品。不要仅凭截图发货，也不要替买家付款。"
+      },
+      "invoicing": {
+        "buyer": "正在生成付款信息，请勿提前转账。",
+        "seller": "请等待 bot 确认到账并发出发货通知后再交付商品。不要仅凭截图发货，也不要替买家付款。"
+      },
+      "paying": {
+        "buyer": "请通过 BSC/BEP20 精确支付显示的 USDT 金额，完整保留 6 位小数。不要重复付款或自行补差额。",
+        "seller": "请等待 bot 确认到账并发出发货通知后再交付商品。不要仅凭截图发货，也不要替买家付款。"
+      },
+      "waiting": {
+        "buyer": "已检测到匹配入款，正在等待支付平台确认，请勿重复付款。",
+        "seller": "请等待 bot 确认到账并发出发货通知后再交付商品。不要仅凭截图发货，也不要替买家付款。"
+      },
+      "paid": {
+        "buyer": "支付已确认，请等待卖家交付商品。",
+        "seller": "支付已确认。请交付商品，完成后点击「Mark as shipped（标记已发货）」。"
+      },
+      "shipped": {
+        "buyer": "买家实际收到并核对商品后再确认收货，有问题请发起争议。",
+        "seller": "你已标记发货，请等待买家核对商品并确认收货。"
+      },
+      "receipt_confirmed": {
+        "buyer": "卖家可以领取货款，请等待结算；你无需再次付款。",
+        "seller": "卖家请领取货款并核对地址及网络费。正常收取担保费，网络费从商品价款扣除。"
+      },
+      "releasing": {
+        "buyer": "卖家可以领取货款，请等待结算；你无需再次付款。",
+        "seller": "转账处理中，请勿重复申请。"
+      },
+      "refund_ready": {
+        "buyer": "买家请领取退款：实际到账全额（含已付担保费和识别尾数）仅扣网络费后退回。",
+        "seller": "正在处理买家退款，请勿继续发货或领取卖家货款。"
+      },
+      "releasing_refund": {
+        "buyer": "转账处理中，请勿重复申请。",
+        "seller": "正在处理买家退款，请勿继续发货或领取卖家货款。"
+      },
+      "refunded": {
+        "buyer": "退款已完成，请核对你的退款到账记录。",
+        "seller": "买家退款已完成，本订单已结束；请勿继续发货或领取卖家货款。"
+      },
+      "completed": {
+        "buyer": "交易已完成，无需再次付款。",
+        "seller": "交易完成，请核对收款记录。频道约 5 分钟后关闭，需要核实可申请保留。"
+      },
+      "manual_refunded": {
+        "buyer": "退款已完成，请核对你的退款到账记录。",
+        "seller": "买家退款已完成，本订单已结束；请勿继续发货或领取卖家货款。"
+      }
+    }
   },
   "日本語": {
     "pending": "相手は30分以内に取引を確認してください。まだ支払いや配送をしないでください。",
@@ -99,7 +211,63 @@
       "入金先",
       "支払期限",
       "注文"
-    ]
+    ],
+    "pending_sender": "取引を申し込みました。相手の確認をお待ちください。まだ支払いや配送をしないでください。",
+    "pending_recipient": "取引の申し込みが届きました。商品、価格、条件を確認し、30分以内に「Confirm trade」を押してください。まだ支払いや配送をしないでください。",
+    "participants": {
+      "confirmed": {
+        "buyer": "15分以内に「Get payment information」を押し、必要な着金額を確認してください。",
+        "seller": "botの入金確認と配送通知をお待ちください。スクリーンショットだけで配送したり、購入者の代わりに支払ったりしないでください。"
+      },
+      "invoicing": {
+        "buyer": "支払い情報を作成中です。まだ送金しないでください。",
+        "seller": "botの入金確認と配送通知をお待ちください。スクリーンショットだけで配送したり、購入者の代わりに支払ったりしないでください。"
+      },
+      "paying": {
+        "buyer": "BSC/BEP20で表示されたUSDT額を小数点以下6桁まで正確に支払ってください。二重払いや自己判断での差額送金はしないでください。",
+        "seller": "botの入金確認と配送通知をお待ちください。スクリーンショットだけで配送したり、購入者の代わりに支払ったりしないでください。"
+      },
+      "waiting": {
+        "buyer": "一致する入金を検出しました。プラットフォームの確認をお待ちください。再支払いは不要です。",
+        "seller": "botの入金確認と配送通知をお待ちください。スクリーンショットだけで配送したり、購入者の代わりに支払ったりしないでください。"
+      },
+      "paid": {
+        "buyer": "入金確認済みです。販売者からの商品のお届けをお待ちください。",
+        "seller": "入金確認済みです。商品を渡した後、「Mark as shipped」を押してください。"
+      },
+      "shipped": {
+        "buyer": "購入者は商品を実際に受け取り、確認してから受領を確定してください。問題があれば異議を申し立ててください。",
+        "seller": "配送済みとして記録されました。購入者の商品確認と受領確定をお待ちください。"
+      },
+      "receipt_confirmed": {
+        "buyer": "販売者は代金を受け取れます。決済の完了をお待ちください。再支払いは不要です。",
+        "seller": "販売者は受取先とネットワーク手数料を確認し、代金を受け取ってください。保証手数料を徴収し、ネットワーク手数料は商品代金から差し引きます。"
+      },
+      "releasing": {
+        "buyer": "販売者は代金を受け取れます。決済の完了をお待ちください。再支払いは不要です。",
+        "seller": "送金処理中です。再申請しないでください。"
+      },
+      "refund_ready": {
+        "buyer": "購入者は返金を受け取ってください。支払済み保証手数料と識別用端数を含む入金全額から、ネットワーク手数料のみ差し引いて返金します。",
+        "seller": "購入者への返金を処理しています。配送や販売代金の受け取りを進めないでください。"
+      },
+      "releasing_refund": {
+        "buyer": "送金処理中です。再申請しないでください。",
+        "seller": "購入者への返金を処理しています。配送や販売代金の受け取りを進めないでください。"
+      },
+      "refunded": {
+        "buyer": "返金完了です。返金の着金記録をご確認ください。",
+        "seller": "購入者への返金が完了し、注文は終了しました。配送や販売代金の受け取りを進めないでください。"
+      },
+      "completed": {
+        "buyer": "取引完了です。追加の支払いは不要です。",
+        "seller": "取引完了です。送金記録をご確認ください。保持申請がなければ約5分後にチャンネルを閉じます。"
+      },
+      "manual_refunded": {
+        "buyer": "返金完了です。返金の着金記録をご確認ください。",
+        "seller": "購入者への返金が完了し、注文は終了しました。配送や販売代金の受け取りを進めないでください。"
+      }
+    }
   },
   "한국어": {
     "pending": "거래 상대방은 30분 이내에 확인해 주세요. 아직 결제하거나 상품을 전달하지 마세요.",
@@ -133,7 +301,63 @@
       "입금 주소",
       "결제 기한",
       "주문"
-    ]
+    ],
+    "pending_sender": "거래를 요청했습니다. 상대방의 확인을 기다리세요. 아직 결제하거나 상품을 전달하지 마세요.",
+    "pending_recipient": "거래 요청을 받았습니다. 상품, 가격, 조건을 확인하고 30분 이내에 Confirm trade를 누르세요. 아직 결제하거나 상품을 전달하지 마세요.",
+    "participants": {
+      "confirmed": {
+        "buyer": "15분 이내에 Get payment information을 눌러 실제 입금해야 할 금액을 확인하세요.",
+        "seller": "bot의 입금 확인과 배송 안내를 기다리세요. 스크린샷만 보고 상품을 전달하거나 구매자 대신 결제하지 마세요."
+      },
+      "invoicing": {
+        "buyer": "결제 정보 생성 중입니다. 아직 송금하지 마세요.",
+        "seller": "bot의 입금 확인과 배송 안내를 기다리세요. 스크린샷만 보고 상품을 전달하거나 구매자 대신 결제하지 마세요."
+      },
+      "paying": {
+        "buyer": "BSC/BEP20으로 표시된 USDT 금액을 소수점 6자리까지 정확히 결제하세요. 중복 결제하거나 임의로 차액을 보내지 마세요.",
+        "seller": "bot의 입금 확인과 배송 안내를 기다리세요. 스크린샷만 보고 상품을 전달하거나 구매자 대신 결제하지 마세요."
+      },
+      "waiting": {
+        "buyer": "일치하는 입금이 감지되었습니다. 플랫폼 확인을 기다리고 재결제하지 마세요.",
+        "seller": "bot의 입금 확인과 배송 안내를 기다리세요. 스크린샷만 보고 상품을 전달하거나 구매자 대신 결제하지 마세요."
+      },
+      "paid": {
+        "buyer": "결제가 확인되었습니다. 판매자의 상품 전달을 기다리세요.",
+        "seller": "결제가 확인되었습니다. 상품 전달 후 Mark as shipped를 누르세요."
+      },
+      "shipped": {
+        "buyer": "구매자는 상품을 실제 수령하고 확인한 후 수령을 확정하세요. 문제가 있으면 분쟁을 신청하세요.",
+        "seller": "발송 완료로 표시했습니다. 구매자의 상품 확인과 수령 확정을 기다리세요."
+      },
+      "receipt_confirmed": {
+        "buyer": "판매자가 대금을 수령할 수 있습니다. 정산을 기다리세요. 다시 결제할 필요가 없습니다.",
+        "seller": "판매자는 주소와 네트워크 수수료를 확인하고 대금을 수령하세요. 보증 수수료가 부과되며 네트워크 수수료는 상품 대금에서 차감됩니다."
+      },
+      "releasing": {
+        "buyer": "판매자가 대금을 수령할 수 있습니다. 정산을 기다리세요. 다시 결제할 필요가 없습니다.",
+        "seller": "송금 처리 중입니다. 다시 신청하지 마세요."
+      },
+      "refund_ready": {
+        "buyer": "구매자는 환불을 수령하세요. 납부한 보증 수수료와 식별용 소수 금액을 포함한 실제 입금 전액에서 네트워크 수수료만 차감하여 환불합니다.",
+        "seller": "구매자 환불을 처리 중입니다. 상품 전달이나 판매 대금 수령을 진행하지 마세요."
+      },
+      "releasing_refund": {
+        "buyer": "송금 처리 중입니다. 다시 신청하지 마세요.",
+        "seller": "구매자 환불을 처리 중입니다. 상품 전달이나 판매 대금 수령을 진행하지 마세요."
+      },
+      "refunded": {
+        "buyer": "환불이 완료되었습니다. 환불 입금 내역을 확인하세요.",
+        "seller": "구매자 환불이 완료되어 주문이 종료되었습니다. 상품 전달이나 판매 대금 수령을 진행하지 마세요."
+      },
+      "completed": {
+        "buyer": "거래가 완료되었습니다. 추가 결제는 필요 없습니다.",
+        "seller": "거래가 완료되었습니다. 송금 내역을 확인하세요. 보존 요청이 없으면 약 5분 후 채널이 닫힙니다."
+      },
+      "manual_refunded": {
+        "buyer": "환불이 완료되었습니다. 환불 입금 내역을 확인하세요.",
+        "seller": "구매자 환불이 완료되어 주문이 종료되었습니다. 상품 전달이나 판매 대금 수령을 진행하지 마세요."
+      }
+    }
   },
   "Bahasa Indonesia": {
     "pending": "Pihak lain harus mengonfirmasi dalam 30 menit. Jangan membayar atau menyerahkan barang dulu.",
@@ -167,7 +391,63 @@
       "Alamat setoran",
       "Batas pembayaran",
       "Pesanan"
-    ]
+    ],
+    "pending_sender": "Anda telah mengirim permintaan transaksi. Tunggu pihak lain mengonfirmasi. Jangan bayar atau serahkan barang dulu.",
+    "pending_recipient": "Anda menerima permintaan transaksi. Periksa barang, harga dan ketentuan, lalu klik Confirm trade dalam 30 menit. Jangan bayar atau serahkan barang dulu.",
+    "participants": {
+      "confirmed": {
+        "buyer": "Klik Get payment information dalam 15 menit untuk melihat jumlah tepat yang harus diterima.",
+        "seller": "Tunggu konfirmasi pembayaran dan pemberitahuan penyerahan dari bot. Jangan menyerahkan barang hanya berdasarkan tangkapan layar atau membayar untuk pembeli."
+      },
+      "invoicing": {
+        "buyer": "Informasi pembayaran sedang dibuat. Jangan transfer dulu.",
+        "seller": "Tunggu konfirmasi pembayaran dan pemberitahuan penyerahan dari bot. Jangan menyerahkan barang hanya berdasarkan tangkapan layar atau membayar untuk pembeli."
+      },
+      "paying": {
+        "buyer": "Bayar jumlah USDT persis yang ditampilkan melalui BSC/BEP20, termasuk 6 desimal. Jangan membayar dua kali atau menambah selisih sendiri.",
+        "seller": "Tunggu konfirmasi pembayaran dan pemberitahuan penyerahan dari bot. Jangan menyerahkan barang hanya berdasarkan tangkapan layar atau membayar untuk pembeli."
+      },
+      "waiting": {
+        "buyer": "Setoran yang cocok terdeteksi. Tunggu konfirmasi platform dan jangan membayar lagi.",
+        "seller": "Tunggu konfirmasi pembayaran dan pemberitahuan penyerahan dari bot. Jangan menyerahkan barang hanya berdasarkan tangkapan layar atau membayar untuk pembeli."
+      },
+      "paid": {
+        "buyer": "Pembayaran dikonfirmasi. Tunggu penjual menyerahkan barang.",
+        "seller": "Pembayaran dikonfirmasi. Serahkan barang, lalu klik Mark as shipped."
+      },
+      "shipped": {
+        "buyer": "Pembeli: periksa barang dan konfirmasikan penerimaan hanya setelah menerimanya. Ajukan sengketa jika perlu.",
+        "seller": "Barang ditandai terkirim. Tunggu pembeli memeriksa dan mengonfirmasi penerimaan."
+      },
+      "receipt_confirmed": {
+        "buyer": "Penjual dapat mengklaim pembayaran. Tunggu penyelesaian; Anda tidak perlu membayar lagi.",
+        "seller": "Penjual: klaim pembayaran dan periksa alamat serta biaya jaringan. Biaya penjaminan dikenakan; biaya jaringan dipotong dari harga barang."
+      },
+      "releasing": {
+        "buyer": "Penjual dapat mengklaim pembayaran. Tunggu penyelesaian; Anda tidak perlu membayar lagi.",
+        "seller": "Transfer sedang diproses. Jangan mengirim permintaan lagi."
+      },
+      "refund_ready": {
+        "buyer": "Pembeli: klaim pengembalian dana. Seluruh dana yang diterima, termasuk biaya penjaminan dan desimal pengenal, dikembalikan setelah dipotong biaya jaringan saja.",
+        "seller": "Pengembalian dana pembeli sedang ditangani. Jangan menyerahkan barang atau mengklaim pembayaran penjual."
+      },
+      "releasing_refund": {
+        "buyer": "Transfer sedang diproses. Jangan mengirim permintaan lagi.",
+        "seller": "Pengembalian dana pembeli sedang ditangani. Jangan menyerahkan barang atau mengklaim pembayaran penjual."
+      },
+      "refunded": {
+        "buyer": "Pengembalian dana selesai. Periksa catatan dana yang Anda terima.",
+        "seller": "Dana pembeli telah dikembalikan dan pesanan ditutup. Jangan menyerahkan barang atau mengklaim pembayaran penjual."
+      },
+      "completed": {
+        "buyer": "Transaksi selesai. Tidak perlu membayar lagi.",
+        "seller": "Transaksi selesai. Periksa catatan transfer. Kanal ditutup sekitar 5 menit lagi kecuali diminta tetap dibuka."
+      },
+      "manual_refunded": {
+        "buyer": "Pengembalian dana selesai. Periksa catatan dana yang Anda terima.",
+        "seller": "Dana pembeli telah dikembalikan dan pesanan ditutup. Jangan menyerahkan barang atau mengklaim pembayaran penjual."
+      }
+    }
   },
   "Tagalog": {
     "pending": "Dapat kumpirmahin ng kabilang panig sa loob ng 30 minuto. Huwag munang magbayad o magbigay ng item.",
@@ -201,7 +481,63 @@
       "Address ng deposito",
       "Takdang bayaran",
       "Order"
-    ]
+    ],
+    "pending_sender": "Naipadala mo ang kahilingan sa transaksyon. Hintayin ang kumpirmasyon ng kabilang panig. Huwag munang magbayad o ibigay ang item.",
+    "pending_recipient": "Nakatanggap ka ng kahilingan sa transaksyon. Suriin ang item, presyo at kasunduan, at i-click ang Confirm trade sa loob ng 30 minuto. Huwag munang magbayad o ibigay ang item.",
+    "participants": {
+      "confirmed": {
+        "buyer": "I-click ang Get payment information sa loob ng 15 minuto upang makita ang eksaktong halagang kailangang matanggap.",
+        "seller": "Hintayin ang kumpirmasyon ng bot at abiso na maaari nang ibigay ang item. Huwag umasa sa screenshot o magbayad para sa mamimili."
+      },
+      "invoicing": {
+        "buyer": "Inihahanda ang impormasyon sa pagbabayad. Huwag munang magpadala.",
+        "seller": "Hintayin ang kumpirmasyon ng bot at abiso na maaari nang ibigay ang item. Huwag umasa sa screenshot o magbayad para sa mamimili."
+      },
+      "paying": {
+        "buyer": "Bayaran ang eksaktong USDT na ipinakita sa BSC/BEP20, kasama ang 6 decimal. Huwag magbayad nang dalawang beses o kusang magdagdag ng kulang.",
+        "seller": "Hintayin ang kumpirmasyon ng bot at abiso na maaari nang ibigay ang item. Huwag umasa sa screenshot o magbayad para sa mamimili."
+      },
+      "waiting": {
+        "buyer": "May natukoy na katugmang deposito. Hintayin ang kumpirmasyon ng platform at huwag magbayad muli.",
+        "seller": "Hintayin ang kumpirmasyon ng bot at abiso na maaari nang ibigay ang item. Huwag umasa sa screenshot o magbayad para sa mamimili."
+      },
+      "paid": {
+        "buyer": "Kumpirmado ang bayad. Hintayin ang nagbebenta na ibigay ang item.",
+        "seller": "Kumpirmado ang bayad. Ibigay ang item, pagkatapos ay i-click ang Mark as shipped."
+      },
+      "shipped": {
+        "buyer": "Mamimili: suriin ang item at kumpirmahin lamang matapos itong matanggap. Maghain ng dispute kung kailangan.",
+        "seller": "Namarkahan nang naipadala. Hintayin ang mamimili na suriin at kumpirmahin ang pagtanggap."
+      },
+      "receipt_confirmed": {
+        "buyer": "Maaari nang kunin ng nagbebenta ang bayad. Hintaying matapos ang pag-aayos; hindi mo kailangang magbayad muli.",
+        "seller": "Nagbebenta: kunin ang bayad at suriin ang address at network fee. May bayad sa garantiya; ang network fee ay ibabawas sa presyo ng item."
+      },
+      "releasing": {
+        "buyer": "Maaari nang kunin ng nagbebenta ang bayad. Hintaying matapos ang pag-aayos; hindi mo kailangang magbayad muli.",
+        "seller": "Pinoproseso ang transfer. Huwag magsumite muli."
+      },
+      "refund_ready": {
+        "buyer": "Mamimili: kunin ang refund. Ibabalik ang buong natanggap na halaga, kasama ang bayad sa garantiya at mga decimal na pananda, bawas lamang ang network fee.",
+        "seller": "Inaayos ang refund ng mamimili. Huwag ibigay ang item o kunin ang bayad para sa nagbebenta."
+      },
+      "releasing_refund": {
+        "buyer": "Pinoproseso ang transfer. Huwag magsumite muli.",
+        "seller": "Inaayos ang refund ng mamimili. Huwag ibigay ang item o kunin ang bayad para sa nagbebenta."
+      },
+      "refunded": {
+        "buyer": "Tapos na ang refund. Suriin ang rekord ng natanggap mong refund.",
+        "seller": "Naibalik na ang bayad sa mamimili at sarado na ang order. Huwag ibigay ang item o kunin ang bayad para sa nagbebenta."
+      },
+      "completed": {
+        "buyer": "Tapos na ang transaksyon. Hindi na kailangang magbayad.",
+        "seller": "Tapos na ang transaksyon. Suriin ang transfer. Isasara ang channel sa humigit-kumulang 5 minuto maliban kung ipapanatili."
+      },
+      "manual_refunded": {
+        "buyer": "Tapos na ang refund. Suriin ang rekord ng natanggap mong refund.",
+        "seller": "Naibalik na ang bayad sa mamimili at sarado na ang order. Huwag ibigay ang item o kunin ang bayad para sa nagbebenta."
+      }
+    }
   },
   "Bahasa Melayu": {
     "pending": "Pihak satu lagi perlu mengesahkan dalam 30 minit. Jangan bayar atau serahkan barang dahulu.",
@@ -235,7 +571,63 @@
       "Alamat deposit",
       "Tarikh akhir bayaran",
       "Pesanan"
-    ]
+    ],
+    "pending_sender": "Anda telah menghantar permintaan urus niaga. Tunggu pengesahan pihak satu lagi. Jangan bayar atau serahkan barang dahulu.",
+    "pending_recipient": "Anda menerima permintaan urus niaga. Semak barang, harga dan syarat, kemudian klik Confirm trade dalam 30 minit. Jangan bayar atau serahkan barang dahulu.",
+    "participants": {
+      "confirmed": {
+        "buyer": "Klik Get payment information dalam 15 minit untuk melihat jumlah tepat yang perlu diterima.",
+        "seller": "Tunggu pengesahan bayaran dan notis penyerahan daripada bot. Jangan serahkan barang berdasarkan tangkap layar atau bayar bagi pihak pembeli."
+      },
+      "invoicing": {
+        "buyer": "Maklumat bayaran sedang disediakan. Jangan pindahkan wang dahulu.",
+        "seller": "Tunggu pengesahan bayaran dan notis penyerahan daripada bot. Jangan serahkan barang berdasarkan tangkap layar atau bayar bagi pihak pembeli."
+      },
+      "paying": {
+        "buyer": "Bayar jumlah USDT tepat yang dipaparkan melalui BSC/BEP20, termasuk 6 perpuluhan. Jangan bayar dua kali atau tambah perbezaan sendiri.",
+        "seller": "Tunggu pengesahan bayaran dan notis penyerahan daripada bot. Jangan serahkan barang berdasarkan tangkap layar atau bayar bagi pihak pembeli."
+      },
+      "waiting": {
+        "buyer": "Deposit sepadan dikesan. Tunggu pengesahan platform dan jangan bayar lagi.",
+        "seller": "Tunggu pengesahan bayaran dan notis penyerahan daripada bot. Jangan serahkan barang berdasarkan tangkap layar atau bayar bagi pihak pembeli."
+      },
+      "paid": {
+        "buyer": "Bayaran disahkan. Tunggu penjual menyerahkan barang.",
+        "seller": "Bayaran disahkan. Serahkan barang, kemudian klik Mark as shipped."
+      },
+      "shipped": {
+        "buyer": "Pembeli: periksa barang dan sahkan penerimaan hanya selepas menerimanya. Buka pertikaian jika perlu.",
+        "seller": "Barang ditandakan telah dihantar. Tunggu pembeli menyemak dan mengesahkan penerimaan."
+      },
+      "receipt_confirmed": {
+        "buyer": "Penjual boleh menuntut bayaran. Tunggu penyelesaian; anda tidak perlu membayar lagi.",
+        "seller": "Penjual: tuntut bayaran dan semak alamat serta caj rangkaian. Caj jaminan dikenakan; caj rangkaian ditolak daripada harga barang."
+      },
+      "releasing": {
+        "buyer": "Penjual boleh menuntut bayaran. Tunggu penyelesaian; anda tidak perlu membayar lagi.",
+        "seller": "Pemindahan sedang diproses. Jangan hantar permohonan lagi."
+      },
+      "refund_ready": {
+        "buyer": "Pembeli: tuntut bayaran balik. Keseluruhan wang diterima, termasuk caj jaminan dan perpuluhan pengenal, dipulangkan selepas ditolak caj rangkaian sahaja.",
+        "seller": "Bayaran balik pembeli sedang diuruskan. Jangan serahkan barang atau tuntut bayaran penjual."
+      },
+      "releasing_refund": {
+        "buyer": "Pemindahan sedang diproses. Jangan hantar permohonan lagi.",
+        "seller": "Bayaran balik pembeli sedang diuruskan. Jangan serahkan barang atau tuntut bayaran penjual."
+      },
+      "refunded": {
+        "buyer": "Bayaran balik selesai. Semak rekod wang yang anda terima.",
+        "seller": "Bayaran balik pembeli selesai dan pesanan ditutup. Jangan serahkan barang atau tuntut bayaran penjual."
+      },
+      "completed": {
+        "buyer": "Urus niaga selesai. Tiada bayaran tambahan diperlukan.",
+        "seller": "Urus niaga selesai. Semak rekod pemindahan. Saluran ditutup dalam kira-kira 5 minit kecuali diminta dikekalkan."
+      },
+      "manual_refunded": {
+        "buyer": "Bayaran balik selesai. Semak rekod wang yang anda terima.",
+        "seller": "Bayaran balik pembeli selesai dan pesanan ditutup. Jangan serahkan barang atau tuntut bayaran penjual."
+      }
+    }
   },
   "Português": {
     "pending": "A outra parte deve confirmar em 30 minutos. Não pague nem entregue ainda.",
@@ -269,7 +661,63 @@
       "Endereço de depósito",
       "Prazo de pagamento",
       "Pedido"
-    ]
+    ],
+    "pending_sender": "Você enviou esta solicitação de negociação. Aguarde a confirmação da outra parte. Não pague nem entregue ainda.",
+    "pending_recipient": "Você recebeu uma solicitação de negociação. Confira item, preço e condições e clique em Confirm trade em até 30 minutos. Não pague nem entregue ainda.",
+    "participants": {
+      "confirmed": {
+        "buyer": "Clique em Get payment information em até 15 minutos para consultar o valor exato que deve ser recebido.",
+        "seller": "Aguarde a confirmação de pagamento e o aviso de entrega do bot. Não entregue com base em capturas de tela nem pague pelo comprador."
+      },
+      "invoicing": {
+        "buyer": "Gerando dados de pagamento. Ainda não transfira.",
+        "seller": "Aguarde a confirmação de pagamento e o aviso de entrega do bot. Não entregue com base em capturas de tela nem pague pelo comprador."
+      },
+      "paying": {
+        "buyer": "Pague o valor USDT exato via BSC/BEP20, com todas as 6 casas decimais. Não pague duas vezes nem complete diferenças por conta própria.",
+        "seller": "Aguarde a confirmação de pagamento e o aviso de entrega do bot. Não entregue com base em capturas de tela nem pague pelo comprador."
+      },
+      "waiting": {
+        "buyer": "Depósito correspondente detectado. Aguarde a confirmação da plataforma e não pague novamente.",
+        "seller": "Aguarde a confirmação de pagamento e o aviso de entrega do bot. Não entregue com base em capturas de tela nem pague pelo comprador."
+      },
+      "paid": {
+        "buyer": "Pagamento confirmado. Aguarde a entrega do vendedor.",
+        "seller": "Pagamento confirmado. Entregue o item e clique em Mark as shipped."
+      },
+      "shipped": {
+        "buyer": "Comprador: confira o item e confirme o recebimento somente após recebê-lo. Abra uma disputa se necessário.",
+        "seller": "Você marcou o item como enviado. Aguarde o comprador conferir e confirmar o recebimento."
+      },
+      "receipt_confirmed": {
+        "buyer": "O vendedor pode solicitar o pagamento. Aguarde a liquidação; você não precisa pagar novamente.",
+        "seller": "Vendedor: solicite o pagamento e confira endereço e taxa de rede. A taxa de garantia é cobrada; a taxa de rede é descontada do preço do item."
+      },
+      "releasing": {
+        "buyer": "O vendedor pode solicitar o pagamento. Aguarde a liquidação; você não precisa pagar novamente.",
+        "seller": "Transferência em processamento. Não solicite novamente."
+      },
+      "refund_ready": {
+        "buyer": "Comprador: solicite o reembolso. Todo o valor recebido, incluindo a taxa de garantia paga e os decimais de identificação, será devolvido descontando apenas a taxa de rede.",
+        "seller": "O reembolso do comprador está sendo tratado. Não entregue nem solicite pagamento de vendedor."
+      },
+      "releasing_refund": {
+        "buyer": "Transferência em processamento. Não solicite novamente.",
+        "seller": "O reembolso do comprador está sendo tratado. Não entregue nem solicite pagamento de vendedor."
+      },
+      "refunded": {
+        "buyer": "Reembolso concluído. Confira o recebimento do seu reembolso.",
+        "seller": "O reembolso do comprador foi concluído e o pedido está encerrado. Não entregue nem solicite pagamento de vendedor."
+      },
+      "completed": {
+        "buyer": "Negociação concluída. Não é necessário pagar novamente.",
+        "seller": "Negociação concluída. Confira a transferência. O canal fecha em cerca de 5 minutos, salvo pedido de retenção."
+      },
+      "manual_refunded": {
+        "buyer": "Reembolso concluído. Confira o recebimento do seu reembolso.",
+        "seller": "O reembolso do comprador foi concluído e o pedido está encerrado. Não entregue nem solicite pagamento de vendedor."
+      }
+    }
   },
   "Español": {
     "pending": "La otra parte debe confirmar en 30 minutos. No pagues ni entregues todavía.",
@@ -303,7 +751,63 @@
       "Dirección de depósito",
       "Plazo de pago",
       "Pedido"
-    ]
+    ],
+    "pending_sender": "Has enviado esta solicitud de intercambio. Espera la confirmación de la otra parte. No pagues ni entregues todavía.",
+    "pending_recipient": "Has recibido una solicitud de intercambio. Revisa el artículo, precio y condiciones y pulsa Confirm trade en 30 minutos. No pagues ni entregues todavía.",
+    "participants": {
+      "confirmed": {
+        "buyer": "Pulsa Get payment information en 15 minutos para consultar el importe exacto que debe recibirse.",
+        "seller": "Espera la confirmación de pago y el aviso de entrega del bot. No entregues basándote en capturas ni pagues por el comprador."
+      },
+      "invoicing": {
+        "buyer": "Generando los datos de pago. No transfieras todavía.",
+        "seller": "Espera la confirmación de pago y el aviso de entrega del bot. No entregues basándote en capturas ni pagues por el comprador."
+      },
+      "paying": {
+        "buyer": "Paga el importe USDT exacto por BSC/BEP20, con los 6 decimales. No pagues dos veces ni completes diferencias por tu cuenta.",
+        "seller": "Espera la confirmación de pago y el aviso de entrega del bot. No entregues basándote en capturas ni pagues por el comprador."
+      },
+      "waiting": {
+        "buyer": "Se detectó un depósito coincidente. Espera la confirmación de la plataforma y no pagues otra vez.",
+        "seller": "Espera la confirmación de pago y el aviso de entrega del bot. No entregues basándote en capturas ni pagues por el comprador."
+      },
+      "paid": {
+        "buyer": "Pago confirmado. Espera a que el vendedor entregue el artículo.",
+        "seller": "Pago confirmado. Entrega el artículo y pulsa Mark as shipped."
+      },
+      "shipped": {
+        "buyer": "Comprador: revisa el artículo y confirma solo después de recibirlo. Abre una disputa si es necesario.",
+        "seller": "Has marcado el artículo como enviado. Espera a que el comprador lo revise y confirme la recepción."
+      },
+      "receipt_confirmed": {
+        "buyer": "El vendedor puede solicitar el pago. Espera la liquidación; no necesitas pagar otra vez.",
+        "seller": "Vendedor: solicita el pago y verifica la dirección y comisión de red. Se cobra la comisión de garantía; la comisión de red se descuenta del precio del artículo."
+      },
+      "releasing": {
+        "buyer": "El vendedor puede solicitar el pago. Espera la liquidación; no necesitas pagar otra vez.",
+        "seller": "Transferencia en curso. No repitas la solicitud."
+      },
+      "refund_ready": {
+        "buyer": "Comprador: solicita el reembolso. Se devuelve todo el importe recibido, incluida la comisión de garantía pagada y los decimales de identificación, descontando solo la comisión de red.",
+        "seller": "Se está gestionando el reembolso del comprador. No entregues ni solicites el pago del vendedor."
+      },
+      "releasing_refund": {
+        "buyer": "Transferencia en curso. No repitas la solicitud.",
+        "seller": "Se está gestionando el reembolso del comprador. No entregues ni solicites el pago del vendedor."
+      },
+      "refunded": {
+        "buyer": "Reembolso completado. Comprueba la recepción de tu reembolso.",
+        "seller": "El reembolso del comprador se ha completado y el pedido está cerrado. No entregues ni solicites el pago del vendedor."
+      },
+      "completed": {
+        "buyer": "Operación completada. No es necesario pagar de nuevo.",
+        "seller": "Operación completada. Revisa la transferencia. El canal se cerrará en unos 5 minutos salvo que se solicite conservarlo."
+      },
+      "manual_refunded": {
+        "buyer": "Reembolso completado. Comprueba la recepción de tu reembolso.",
+        "seller": "El reembolso del comprador se ha completado y el pedido está cerrado. No entregues ni solicites el pago del vendedor."
+      }
+    }
   },
   "ภาษาไทย": {
     "pending": "อีกฝ่ายต้องยืนยันภายใน 30 นาที อย่าเพิ่งชำระเงินหรือส่งสินค้า",
@@ -337,7 +841,63 @@
       "ที่อยู่รับเงิน",
       "กำหนดชำระ",
       "คำสั่งซื้อ"
-    ]
+    ],
+    "pending_sender": "คุณส่งคำขอซื้อขายแล้ว โปรดรออีกฝ่ายยืนยัน อย่าเพิ่งชำระเงินหรือส่งสินค้า",
+    "pending_recipient": "คุณได้รับคำขอซื้อขาย โปรดตรวจสอบสินค้า ราคา และข้อตกลง แล้วกด Confirm trade ภายใน 30 นาที อย่าเพิ่งชำระเงินหรือส่งสินค้า",
+    "participants": {
+      "confirmed": {
+        "buyer": "กด Get payment information ภายใน 15 นาทีเพื่อดูยอดที่ต้องได้รับจริง",
+        "seller": "รอ bot ยืนยันการชำระเงินและแจ้งให้ส่งสินค้าก่อน อย่าส่งสินค้าจากภาพหน้าจอเพียงอย่างเดียวหรือชำระแทนผู้ซื้อ"
+      },
+      "invoicing": {
+        "buyer": "กำลังสร้างข้อมูลชำระเงิน อย่าเพิ่งโอน",
+        "seller": "รอ bot ยืนยันการชำระเงินและแจ้งให้ส่งสินค้าก่อน อย่าส่งสินค้าจากภาพหน้าจอเพียงอย่างเดียวหรือชำระแทนผู้ซื้อ"
+      },
+      "paying": {
+        "buyer": "ชำระ USDT ตามยอดที่แสดงผ่าน BSC/BEP20 ให้ตรงทั้ง 6 ตำแหน่งทศนิยม อย่าชำระซ้ำหรือเติมส่วนต่างเอง",
+        "seller": "รอ bot ยืนยันการชำระเงินและแจ้งให้ส่งสินค้าก่อน อย่าส่งสินค้าจากภาพหน้าจอเพียงอย่างเดียวหรือชำระแทนผู้ซื้อ"
+      },
+      "waiting": {
+        "buyer": "พบเงินเข้าที่ตรงกัน โปรดรอแพลตฟอร์มยืนยันและอย่าชำระซ้ำ",
+        "seller": "รอ bot ยืนยันการชำระเงินและแจ้งให้ส่งสินค้าก่อน อย่าส่งสินค้าจากภาพหน้าจอเพียงอย่างเดียวหรือชำระแทนผู้ซื้อ"
+      },
+      "paid": {
+        "buyer": "ยืนยันการชำระเงินแล้ว โปรดรอผู้ขายส่งสินค้า",
+        "seller": "ยืนยันการชำระเงินแล้ว โปรดส่งสินค้าแล้วกด Mark as shipped"
+      },
+      "shipped": {
+        "buyer": "ผู้ซื้อ: ตรวจสอบและยืนยันรับสินค้าหลังได้รับจริงเท่านั้น หากมีปัญหาให้เปิดข้อพิพาท",
+        "seller": "คุณทำเครื่องหมายว่าส่งแล้ว โปรดรอผู้ซื้อตรวจสอบและยืนยันรับสินค้า"
+      },
+      "receipt_confirmed": {
+        "buyer": "ผู้ขายสามารถรับเงินได้ โปรดรอการชำระบัญชี คุณไม่ต้องชำระอีก",
+        "seller": "ผู้ขาย: รับเงินและตรวจสอบที่อยู่กับค่าธรรมเนียมเครือข่าย ระบบเก็บค่าค้ำประกันและหักค่าธรรมเนียมเครือข่ายจากราคาสินค้า"
+      },
+      "releasing": {
+        "buyer": "ผู้ขายสามารถรับเงินได้ โปรดรอการชำระบัญชี คุณไม่ต้องชำระอีก",
+        "seller": "กำลังดำเนินการโอน อย่าส่งคำขอซ้ำ"
+      },
+      "refund_ready": {
+        "buyer": "ผู้ซื้อ: รับเงินคืน โดยคืนยอดรับจริงทั้งหมดรวมค่าค้ำประกันและทศนิยมระบุรายการ หักเฉพาะค่าธรรมเนียมเครือข่าย",
+        "seller": "กำลังจัดการคืนเงินให้ผู้ซื้อ อย่าส่งสินค้าหรือขอรับเงินของผู้ขาย"
+      },
+      "releasing_refund": {
+        "buyer": "กำลังดำเนินการโอน อย่าส่งคำขอซ้ำ",
+        "seller": "กำลังจัดการคืนเงินให้ผู้ซื้อ อย่าส่งสินค้าหรือขอรับเงินของผู้ขาย"
+      },
+      "refunded": {
+        "buyer": "คืนเงินสำเร็จ โปรดตรวจสอบยอดคืนเงินที่คุณได้รับ",
+        "seller": "คืนเงินให้ผู้ซื้อสำเร็จและปิดคำสั่งซื้อแล้ว อย่าส่งสินค้าหรือขอรับเงินของผู้ขาย"
+      },
+      "completed": {
+        "buyer": "การซื้อขายเสร็จสมบูรณ์ ไม่ต้องชำระเพิ่มเติม",
+        "seller": "การซื้อขายเสร็จสมบูรณ์ โปรดตรวจสอบรายการโอน ช่องจะปิดในประมาณ 5 นาทีหากไม่มีคำขอให้เก็บไว้"
+      },
+      "manual_refunded": {
+        "buyer": "คืนเงินสำเร็จ โปรดตรวจสอบยอดคืนเงินที่คุณได้รับ",
+        "seller": "คืนเงินให้ผู้ซื้อสำเร็จและปิดคำสั่งซื้อแล้ว อย่าส่งสินค้าหรือขอรับเงินของผู้ขาย"
+      }
+    }
   },
   "Tiếng Việt": {
     "pending": "Bên còn lại cần xác nhận trong 30 phút. Chưa thanh toán hoặc giao hàng.",
@@ -371,6 +931,62 @@
       "Địa chỉ nạp",
       "Hạn thanh toán",
       "Đơn hàng"
-    ]
+    ],
+    "pending_sender": "Bạn đã gửi yêu cầu giao dịch. Hãy chờ bên còn lại xác nhận. Chưa thanh toán hoặc giao hàng.",
+    "pending_recipient": "Bạn nhận được yêu cầu giao dịch. Kiểm tra hàng hóa, giá và thỏa thuận, rồi nhấn Confirm trade trong 30 phút. Chưa thanh toán hoặc giao hàng.",
+    "participants": {
+      "confirmed": {
+        "buyer": "Nhấn Get payment information trong 15 phút để xem số tiền thực nhận chính xác cần thanh toán.",
+        "seller": "Đợi bot xác nhận thanh toán và thông báo giao hàng. Không giao chỉ dựa vào ảnh chụp hoặc thanh toán thay người mua."
+      },
+      "invoicing": {
+        "buyer": "Đang tạo thông tin thanh toán. Chưa chuyển tiền.",
+        "seller": "Đợi bot xác nhận thanh toán và thông báo giao hàng. Không giao chỉ dựa vào ảnh chụp hoặc thanh toán thay người mua."
+      },
+      "paying": {
+        "buyer": "Trả đúng số USDT hiển thị qua BSC/BEP20 với đủ 6 chữ số thập phân. Không trả hai lần hoặc tự chuyển thêm phần chênh lệch.",
+        "seller": "Đợi bot xác nhận thanh toán và thông báo giao hàng. Không giao chỉ dựa vào ảnh chụp hoặc thanh toán thay người mua."
+      },
+      "waiting": {
+        "buyer": "Đã phát hiện khoản nạp khớp. Chờ nền tảng xác nhận và không thanh toán lần nữa.",
+        "seller": "Đợi bot xác nhận thanh toán và thông báo giao hàng. Không giao chỉ dựa vào ảnh chụp hoặc thanh toán thay người mua."
+      },
+      "paid": {
+        "buyer": "Thanh toán đã được xác nhận. Hãy chờ người bán giao hàng.",
+        "seller": "Thanh toán đã được xác nhận. Giao hàng rồi nhấn Mark as shipped."
+      },
+      "shipped": {
+        "buyer": "Người mua: kiểm tra và chỉ xác nhận sau khi thực sự nhận hàng. Mở tranh chấp nếu cần.",
+        "seller": "Bạn đã đánh dấu đã gửi hàng. Chờ người mua kiểm tra và xác nhận đã nhận."
+      },
+      "receipt_confirmed": {
+        "buyer": "Người bán có thể nhận tiền. Hãy chờ quyết toán; bạn không cần trả thêm.",
+        "seller": "Người bán: nhận tiền và kiểm tra địa chỉ cùng phí mạng. Phí bảo chứng được thu; phí mạng trừ vào giá hàng."
+      },
+      "releasing": {
+        "buyer": "Người bán có thể nhận tiền. Hãy chờ quyết toán; bạn không cần trả thêm.",
+        "seller": "Đang xử lý chuyển tiền. Không gửi yêu cầu lần nữa."
+      },
+      "refund_ready": {
+        "buyer": "Người mua: nhận hoàn tiền. Hoàn toàn bộ số thực nhận, gồm phí bảo chứng đã trả và phần thập phân nhận diện, chỉ trừ phí mạng.",
+        "seller": "Đang xử lý hoàn tiền cho người mua. Không giao hàng hoặc yêu cầu nhận tiền bán hàng."
+      },
+      "releasing_refund": {
+        "buyer": "Đang xử lý chuyển tiền. Không gửi yêu cầu lần nữa.",
+        "seller": "Đang xử lý hoàn tiền cho người mua. Không giao hàng hoặc yêu cầu nhận tiền bán hàng."
+      },
+      "refunded": {
+        "buyer": "Hoàn tiền thành công. Hãy kiểm tra khoản hoàn tiền bạn nhận được.",
+        "seller": "Đã hoàn tiền cho người mua và đóng đơn. Không giao hàng hoặc yêu cầu nhận tiền bán hàng."
+      },
+      "completed": {
+        "buyer": "Giao dịch hoàn tất. Không cần thanh toán thêm.",
+        "seller": "Giao dịch hoàn tất. Kiểm tra lịch sử chuyển tiền. Kênh đóng sau khoảng 5 phút trừ khi được yêu cầu giữ lại."
+      },
+      "manual_refunded": {
+        "buyer": "Hoàn tiền thành công. Hãy kiểm tra khoản hoàn tiền bạn nhận được.",
+        "seller": "Đã hoàn tiền cho người mua và đóng đơn. Không giao hàng hoặc yêu cầu nhận tiền bán hàng."
+      }
+    }
   }
 }

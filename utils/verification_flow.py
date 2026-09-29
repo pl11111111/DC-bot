@@ -87,6 +87,7 @@ class VerificationView(discord.ui.View):
         self.translate=translate
         self.stage='rules' if translate else 'language'
         self.done=False
+        self.translation=None
         self.lock=asyncio.Lock()
         self.build()
 
@@ -126,6 +127,7 @@ class VerificationView(discord.ui.View):
                     if await source(self.channel_id,self.message_id)!=self.original:
                         raise ValueError('The rules have changed. Please reopen verification and read the latest rules.')
                     await action(inter)
+                    await self.refresh_translation()
                     self.build()
                     if self.done: self.clear_items()
                     await inter.edit_original_response(embed=self.render(),view=self,allowed_mentions=discord.AllowedMentions.none())
@@ -138,13 +140,18 @@ class VerificationView(discord.ui.View):
         item.callback=callback
         self.add_item(item)
 
+    async def refresh_translation(self):
+        if self.stage=='rules' and not self.done:
+            from utils.translation_store import resolve
+            self.translation=await resolve(self.message_id,self.original,self.language)
+
     def render(self):
         ui=text(self.ui_language)
         if self.done:
             return discord.Embed(title='✅ '+ui['done'],description=self.language,color=0x9854DE)
         if self.stage=='language':
             return discord.Embed(title='🌐 '+ui['choose'],description=f"**{self.language}**\n\n{ui['intro']}",color=0x9854DE)
-        article,fallback=translated(self.original,self.language)
+        article,fallback=self.translation if self.translation is not None else translated(self.original,self.language)
         prefix='⚠️ '+ui['fallback']+'\n\n' if fallback else ''
         return discord.Embed(title=article['title'],description=prefix+article['body'],color=0x9854DE).set_footer(
             text=f"{self.language} · "+ui['only' if self.translate else 'read'])
@@ -183,4 +190,5 @@ async def start(cog,inter,translate=False):
     language=preferred(member,inter.locale,saved) if translate else client_language(inter.locale)
     if language not in languages(): language='English'
     view=VerificationView(cog,inter,original,language,translate)
+    await view.refresh_translation()
     await inter.followup.send(embed=view.render(),view=view,ephemeral=True,allowed_mentions=discord.AllowedMentions.none())

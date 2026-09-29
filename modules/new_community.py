@@ -307,6 +307,20 @@ class NewCommunity(commands.Cog):
             log.exception('New community interaction failed')
             await interaction.followup.send(str(exc) if isinstance(exc,ValueError) else '操作失败，请联系管理员检查权限或服务状态。',ephemeral=True)
 
+    @discord.slash_command(name='new_translation_batch',description='导出原文，或上传 JSON 一次导入多种语言译文（仅管理员）')
+    async def translation_batch(self,ctx,message_link:str,file:discord.Attachment=None):
+        if not ctx.guild or ctx.guild.id!=cfg.GUILD_ID or not admin(ctx.author,cfg.NOTICE_ADMIN_ROLES):
+            return await ctx.respond('没有操作权限。',ephemeral=True)
+        from utils.translation_batch import run
+        await run(self,ctx,message_link,file)
+
+    @discord.slash_command(name='new_translation',description='为已发布的规则或论坛贴补充、修改译文（仅管理员）')
+    async def translation(self,ctx,message_link:str,language:discord.Option(str,choices=list(cfg.LANGUAGES))):
+        if not ctx.guild or ctx.guild.id!=cfg.GUILD_ID or not admin(ctx.author,cfg.NOTICE_ADMIN_ROLES):
+            return await ctx.respond('没有操作权限。',ephemeral=True)
+        from utils.translation_editor import open_editor
+        await open_editor(self,ctx,message_link,language)
+
     @discord.slash_command(name='new_panel',description='选择频道发布或修改内容、横幅及验证按钮')
     async def panel(self,ctx,channel:discord.TextChannel,verification:bool=None):
         if not ctx.guild or ctx.guild.id!=cfg.GUILD_ID or not admin(ctx.author,cfg.NOTICE_ADMIN_ROLES):

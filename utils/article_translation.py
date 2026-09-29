@@ -3,6 +3,7 @@ import discord
 from discord.http import Route
 from utils import verification_flow as vf
 from utils.verification_text import text
+from utils import translation_store
 
 async def sync_existing(cog):
     rows=await vf.db.query("SELECT s.setting_key,s.value FROM settings s WHERE s.setting_key LIKE %s AND NOT EXISTS (SELECT 1 FROM settings done WHERE done.setting_key=CONCAT('translation_button:',SUBSTRING(s.setting_key,8))) LIMIT 10",('notice:%',))
@@ -53,8 +54,8 @@ async def start(cog,inter):
     original=await read(inter.message,cog.bot.user.id)
     view=discord.ui.View(timeout=600)
     menu=discord.ui.Select(placeholder=text(language)['choose'],options=[discord.SelectOption(label=x,value=x,default=x==language) for x in vf.languages()])
-    def render(article,lang):
-        translated,missing=vf.translated(article,lang)
+    async def render(article,lang):
+        translated,missing=await translation_store.resolve(inter.message.id,article,lang)
         body=(text(lang)['fallback']+'\n\n' if missing else '')+translated['body']
         # Discord supports at most 6000 embed characters in one message.
         if len(body)+len(translated['title'])>5700: raise ValueError('This article is too long; please split it into shorter posts.')
@@ -65,9 +66,9 @@ async def start(cog,inter):
         await click.response.defer()
         try:
             current=await read(inter.message,cog.bot.user.id)
-            await click.edit_original_response(embeds=render(current,menu.values[0]),view=view,allowed_mentions=discord.AllowedMentions.none())
+            await click.edit_original_response(embeds=await render(current,menu.values[0]),view=view,allowed_mentions=discord.AllowedMentions.none())
         except Exception:
             await click.followup.send('Unable to load the current article. Please reopen Translate.',ephemeral=True)
     menu.callback=choose
     view.add_item(menu)
-    await inter.followup.send(embeds=render(original,language),view=view,ephemeral=True,allowed_mentions=discord.AllowedMentions.none())
+    await inter.followup.send(embeds=await render(original,language),view=view,ephemeral=True,allowed_mentions=discord.AllowedMentions.none())

@@ -8,6 +8,47 @@ from unittest.mock import AsyncMock,patch
 from utils import trade_language as t,verification_flow as v,article_translation as a
 
 class MultilingualTests(unittest.IsolatedAsyncioTestCase):
+    async def test_every_action_stage_has_distinct_buyer_seller_notifications(self):
+        stages=('confirmed','invoicing','paying','waiting','paid','shipped','receipt_confirmed',
+                'releasing','completed','refund_ready','releasing_refund','refunded','manual_refunded')
+        for language,pack in t.PACKS.items():
+            for stage in stages:
+                with self.subTest(language=language,stage=stage):
+                    row=dict(buyer_id=1,seller_id=2,status=stage,_languages=[language],
+                        _user_languages={'buyer_id':language,'seller_id':language})
+                    roles=pack['participants'][stage]
+                    self.assertNotEqual(roles['buyer'],roles['seller'])
+                    message,_=t.notify(row)
+                    self.assertIn('<@1>：'+roles['buyer'],message)
+                    self.assertIn('<@2>：'+roles['seller'],message)
+                    self.assertEqual(message.count(f'**{language}**'),1)
+                    self.assertEqual(message.count('<@1>'),1)
+                    self.assertEqual(message.count('<@2>'),1)
+        confirmed=t.PACKS['English']['participants']['confirmed']
+        self.assertIn('15 minutes',confirmed['buyer'])
+        self.assertNotIn('15 minutes',confirmed['seller'])
+
+    async def test_pending_instructions_follow_initiator_not_buyer(self):
+        for initiator in (1,2):
+            for languages in (['中文','English'],['中文','中文']):
+                row=dict(buyer_id=1,seller_id=2,initiator_id=initiator,status='pending',
+                    _user_languages=dict(zip(('buyer_id','seller_id'),languages)),_languages=list(dict.fromkeys(languages)))
+                result,_=t.notify(row)
+                for key,lang in row['_user_languages'].items():
+                    action='pending_sender' if row[key]==initiator else 'pending_recipient'
+                    self.assertIn(f'<@{row[key]}>：'+t.PACKS[lang][action],result)
+                self.assertEqual(result.count('<@1>'),1)
+                self.assertEqual(result.count('<@2>'),1)
+
+    async def test_localized_fields_retain_emojis(self):
+        import discord
+        embed=discord.Embed()
+        embed.add_field(name='📦 物品',value='item')
+        embed.add_field(name='付款截止',value='deadline')
+        result=t.localize_embed(embed,dict(id='order',status='paid',_languages=['English','中文']))
+        self.assertTrue(result.fields[0].name.startswith('📦 '))
+        self.assertTrue(result.fields[1].name.startswith('⏳ '))
+
     async def test_notice_scan_pattern_survives_driver_parameter_formatting(self):
         import pymysql
         connection=pymysql.connect(defer_connect=True)
@@ -29,7 +70,8 @@ class MultilingualTests(unittest.IsolatedAsyncioTestCase):
             msg,_=t.notify(localized)
             self.assertEqual(msg.count('<@1>'),1)
             self.assertEqual(msg.count('<@2>'),1)
-            self.assertIn('6 decimals',msg)
+            self.assertIn('6 位小数',msg)
+            self.assertIn('Seller <@2>：Wait for the bot',msg)
             members[2]=members[1]
             localized=await t.assign(row,NS(get_member=lambda uid:members[uid]))
             self.assertEqual(localized['_languages'],['中文'])
