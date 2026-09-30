@@ -1,11 +1,15 @@
 import pymysql
 import config
+import re
 
 def create_database():
     """如果数据库和所需表不存在，则创建它们。"""
+    if not re.fullmatch(r'[A-Za-z0-9_]+', config.MYSQL_DATABASE):
+        raise ValueError('Invalid database name')
     # 不指定数据库连接到MySQL服务器
     connection = pymysql.connect(
         host=config.MYSQL_HOST,
+        port=config.MYSQL_PORT,
         user=config.MYSQL_USER,
         password=config.MYSQL_PASSWORD,
         charset='utf8mb4'
@@ -13,9 +17,12 @@ def create_database():
     
     try:
         with connection.cursor() as cursor:
+            cursor.execute('SET default_storage_engine=InnoDB')
             # 如果数据库不存在则创建
-            cursor.execute(f"CREATE DATABASE IF NOT EXISTS {config.MYSQL_DATABASE}")
-            cursor.execute(f"USE {config.MYSQL_DATABASE}")
+            cursor.execute(f"CREATE DATABASE IF NOT EXISTS `{config.MYSQL_DATABASE}`")
+            cursor.execute(f"USE `{config.MYSQL_DATABASE}`")
+            from utils.giveaway_credits import SCHEMA
+            cursor.execute(SCHEMA)
             
             # 创建用户表
             cursor.execute("""

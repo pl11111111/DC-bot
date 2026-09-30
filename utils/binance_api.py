@@ -57,81 +57,44 @@ async def make_api_request(
     params: Dict = None,
     needs_signature: bool = True
 ) -> Optional[Dict]:
-    """向Binance API发出请求。"""
-    headers = {
-        "X-MBX-APIKEY": config.BINANCE_API_KEY
-    }
-    
-    url = BASE_URL + endpoint
-    
-    if params is None:
-        params = {}
-    
-    # 确保所有参数值都是字符串
-    for key in list(params.keys()):
-        if params[key] is not None:
-            params[key] = str(params[key])
-    
-    # 为需要签名的端点添加时间戳
+    """Authenticated requests stay on the provider and never log signed URLs."""
+    import re
+    from urllib.parse import urlencode
+    if method not in ('GET', 'POST') or not re.fullmatch(r'/(?:sapi|api)/[A-Za-z0-9/_-]+', endpoint):
+        raise ValueError('Unsupported Binance endpoint or method')
+    # Never mutate the caller's data, reuse a signature, or follow a redirect with credentials.
+    values = {key: str(value) for key, value in (params or {}).items()
+              if value is not None and key not in ('signature', 'timestamp')}
     if needs_signature:
-        # 添加时间戳
-        params["timestamp"] = str(int(time.time() * 1000))
-        
-        # 按照Binance要求处理参数（URL编码）
-        import urllib.parse
-        query_string = urllib.parse.urlencode(params)
-        
-        # 生成签名
-        signature = hmac.new(
-            config.BINANCE_API_SECRET.encode('utf-8'),
-            query_string.encode('utf-8'),
-            hashlib.sha256
-        ).hexdigest()
-        
-        # 添加签名到查询参数（不参与再次签名）
-        params["signature"] = signature
-        
-        # 记录完整的请求信息以便调试
-        logger.info(f"API请求: {method} {endpoint}")
-        logger.info(f"参数: {params}")
-        logger.info(f"查询字符串: {query_string}")
-    
+        values['timestamp'] = str(int(time.time() * 1000))
+        values.setdefault('recvWindow', '5000')
+    query = urlencode(values)
+    if needs_signature:
+        query += '&signature=' + hmac.new(config.BINANCE_API_SECRET.encode(), query.encode(), hashlib.sha256).hexdigest()
+    # Pass the exact signed bytes to the transport; re-encoding can invalidate the signature.
+    from yarl import URL
+    url = URL(BASE_URL + endpoint + ('?' + query if query else ''), encoded=True)
     try:
         async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30)) as session:
-            if method == "GET":
-                async with session.get(url, params=params, headers=headers) as response:
-                    response_text = await response.text()
-                    if response.status == 200:
-                        try:
-                            result = json.loads(response_text)
-                            return result
-                        except json.JSONDecodeError:
-                            logger.error(f"无法解析JSON响应: {response_text}")
-                            return None
-                    else:
-                        logger.error(f"Binance API错误 ({response.status}): {response_text}")
-                        logger.error(f"请求URL: {url}")
-                        logger.error('请求失败；不记录签名参数')
+            async with session.request(method, url, headers={'X-MBX-APIKEY': config.BINANCE_API_KEY},
+                                       allow_redirects=False) as response:
+                if response.status != 200:
+                    logger.error('Binance request rejected: method=%s endpoint=%s status=%s', method, endpoint, response.status)
+                    return None
+                chunks = bytearray()
+                async for chunk in response.content.iter_chunked(65536):
+                    chunks.extend(chunk)
+                    if len(chunks) > 16 * 1024 * 1024:
+                        logger.error('Binance response too large: endpoint=%s', endpoint)
                         return None
-            elif method == "POST":
-                async with session.post(url, params=params, headers=headers) as response:
-                    response_text = await response.text()
-                    if response.status == 200:
-                        try:
-                            result = json.loads(response_text)
-                            return result
-                        except json.JSONDecodeError:
-                            logger.error(f"无法解析JSON响应: {response_text}")
-                            return None
-                    else:
-                        logger.error(f"Binance API错误 ({response.status}): {response_text}")
-                        logger.error(f"请求URL: {url}")
-                        logger.error('请求失败；不记录签名参数')
-                        return None
-    except Exception as e:
-        logger.error(f"向Binance发出API请求时出错: {e}")
-        logger.error(f"请求URL: {url}")
-        logger.error('请求失败；不记录签名参数')
+                try:
+                    return json.loads(chunks)
+                except (ValueError, UnicodeError):
+                    logger.error('Invalid Binance response: endpoint=%s', endpoint)
+                    return None
+    except Exception as exc:
+        # Client exceptions can contain request URLs, signatures and response bodies.
+        logger.error('Binance request failed: method=%s endpoint=%s error_type=%s', method, endpoint, type(exc).__name__)
         return None
 
 async def get_deposit_address(coin: str = "USDT", network: str = "BSC", transaction_id: Optional[int] = None) -> Optional[str]:
@@ -190,6 +153,10 @@ async def withdraw_funds(
     Returns:
         成功时返回提现ID，失败时返回None
     """
+    # Retired paths have no durable payout intent; never bypass the new ledger.
+    if not (config.LEGACY_TRADING_ENABLED or config.LEGACY_RENTAL_ENABLED):
+        logger.error('Retired withdrawal entrypoint is disabled')
+        return None
     # 地址验证
     if not address or len(address) < 10:
         logger.error(f"提现地址无效: {address}")
@@ -310,6 +277,8 @@ async def release_escrow_payment(
     Returns:
         成功标志, 提现ID, 错误信息
     """
+    if not (config.LEGACY_TRADING_ENABLED or config.LEGACY_RENTAL_ENABLED):
+        return False, None, '旧版资金释放已停用，请通过新订单账本处理'
     if config.NEW.PAYMENTS_ENABLED:
         from utils import shared_payments
         key = shared_payments.legacy_key(transaction_id)

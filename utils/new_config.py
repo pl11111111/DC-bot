@@ -73,6 +73,12 @@ MYSQL_DATABASE = os.getenv('NEW_MYSQL_DATABASE', 'trade_bot_new').strip()
 PAYMENTS_DATABASE = os.getenv('PAYMENTS_MYSQL_DATABASE', 'trade_bot_payments').strip()
 FEE = Decimal('2.00')
 MAX_ACTIVE = number('NEW_MAX_ACTIVE_TRADES', 5)
+# Conservative limits; zero/invalid input must never disable protection.
+TRADE_CREATE_COOLDOWN = max(10, number('NEW_TRADE_CREATE_COOLDOWN_SECONDS',60))
+TRADE_CREATE_HOURLY = max(1, min(60, number('NEW_TRADE_CREATE_HOURLY',10)))
+TRADE_MAX_INCOMING = max(1, min(5, number('NEW_TRADE_MAX_INCOMING',2)))
+TRADE_MAX_CHANNELS = max(1, min(200, number('NEW_TRADE_MAX_CHANNELS',40)))
+VOICE_MAX_ROOMS = max(1, min(100, number('NEW_VOICE_MAX_ROOMS',20)))
 LOG_SOFT_BYTES = 2_000_000_000
 LOG_TARGET_BYTES = 1_500_000_000
 LOG_WARN_BYTES = 2_700_000_000

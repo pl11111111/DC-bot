@@ -2,6 +2,7 @@
 import asyncio
 import logging
 import json
+from weakref import WeakValueDictionary
 from pathlib import Path
 import discord
 from discord.ext import commands, tasks
@@ -31,11 +32,12 @@ def buttons(items):
     return view
 
 def admin(member, roles):
-    return member.guild_permissions.administrator or any(r.id in roles for r in member.roles)
+    return member.guild_permissions.administrator or any(r.id in roles and r.id != cfg.GUILD_ID for r in member.roles)
 
 def safe_self_role(role,guild):
-    return bool(role and not role.managed and not role.is_default() and role<guild.me.top_role
-                and not role.permissions.administrator and not role.permissions.manage_roles
+    from utils.security import privileged_role
+    return bool(role and guild.me and not role.managed and not role.is_default() and role<guild.me.top_role
+                and not privileged_role(role)
                 and role.id not in set(cfg.TRADE_ADMIN_ROLES+cfg.NOTICE_ADMIN_ROLES))
 
 def embeds(title, body, banner=None):
@@ -56,7 +58,7 @@ class NewCommunity(commands.Cog):
         self.bot=bot
         self.invites=None
         self.invite_lock=asyncio.Lock()
-        self.role_locks={}
+        self.role_locks=WeakValueDictionary()
         self.panel_lock=asyncio.Lock()
         self.ready=False
         self.maintenance.start()

@@ -4,7 +4,7 @@ os.environ.update(DISCORD_TOKEN='offline-test',GUILD_ID='1',NEW_GUILD_ID='2',BIN
                   MYSQL_HOST='127.0.0.1',MYSQL_PORT='33379',MYSQL_USER='root',MYSQL_PASSWORD='',MYSQL_DATABASE='__test_newbot_legacy',
                   NEW_MYSQL_DATABASE='__test_newbot_new',PAYMENTS_MYSQL_DATABASE='__test_newbot_payments',NEW_WITHDRAW_AMOUNT_MODE='gross')
 import asyncio
-from datetime import datetime,timedelta
+from datetime import datetime,timedelta,timezone
 from decimal import Decimal
 from unittest.mock import AsyncMock,patch
 from types import SimpleNamespace as NS
@@ -55,7 +55,7 @@ async def main():
     print('PASS concurrent retries of same order')
 
     inv=await db.query('SELECT * FROM invoices WHERE order_key=%s',('new:first',),shared=True,one=True)
-    deposit={'id':'credit-1','txId':'tx-1','coin':'USDT','network':'BSC','status':1,'address':'address','amount':str(amount),'insertTime':int(datetime.utcnow().timestamp()*1000)}
+    deposit={'id':'credit-1','txId':'tx-1','coin':'USDT','network':'BSC','status':1,'address':'address','amount':str(amount),'insertTime':int(datetime.now(timezone.utc).timestamp()*1000)}
     with patch('utils.binance_api.make_api_request',AsyncMock(return_value=[deposit])):
         results=await asyncio.gather(*(p.find_deposit('new:first','address',amount) for i in range(4)))
         assert results==['tx-1']*4

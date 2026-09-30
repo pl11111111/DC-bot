@@ -7,6 +7,7 @@ import discord
 from discord.ext import commands, tasks
 import config
 from utils import new_store as db
+from utils.abuse_guard import TokenBucket
 
 cfg = config.NEW
 log = logging.getLogger(__name__)
@@ -20,6 +21,9 @@ class NewVoice(commands.Cog):
         self.rooms = {}
         self.created = {}
         self.cooldowns = {}
+        self.events = TokenBucket(4,10)
+        self.event_budget = TokenBucket(40,10,max_keys=1)
+        self.creations = TokenBucket(5,60,max_keys=1)
         self.loaded = False
         if cfg.VOICE_CREATE_CHANNEL_ID and cfg.VOICE_CATEGORY_ID:
             self.cleanup.start()
@@ -69,6 +73,8 @@ class NewVoice(commands.Cog):
 
     async def create_for(self, member):
         guild = member.guild
+        if guild.id != cfg.GUILD_ID or member.bot:
+            return
         if not member.voice or not member.voice.channel or member.voice.channel.id != cfg.VOICE_CREATE_CHANNEL_ID:
             return
         category = guild.get_channel(cfg.VOICE_CATEGORY_ID)
@@ -83,10 +89,8 @@ class NewVoice(commands.Cog):
                 return
         now = time.monotonic()
         if now-self.cooldowns.get(member.id, float('-inf')) < 30:
-            try:
-                await member.send('Please wait 30 seconds before creating another voice room, then rejoin the creation channel.')
-            except discord.HTTPException:
-                pass
+            return
+        if len(self.rooms) >= cfg.VOICE_MAX_ROOMS or not self.creations.allow('create'):
             return
         self.cooldowns[member.id] = now
         # Inherit category access; creating a room does not grant moderation powers.
@@ -113,6 +117,9 @@ class NewVoice(commands.Cog):
         if member.guild.id != cfg.GUILD_ID or member.bot:
             return
         if not cfg.VOICE_CREATE_CHANNEL_ID or not cfg.VOICE_CATEGORY_ID or before.channel == after.channel:
+            return
+        if not self.events.allow(member.id) or not self.event_budget.allow('event'):
+            # Periodic cleanup still handles any empty room skipped here.
             return
         try:
             async with self.lock:

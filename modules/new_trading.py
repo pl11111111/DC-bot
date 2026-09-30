@@ -16,7 +16,7 @@ from modules.new_community import buttons, admin, texts
 cfg=config.NEW
 log=logging.getLogger(__name__)
 from utils.trade_states import TERMINAL, TERMINAL_SQL, AUTO_CLEANUP, IDLE_SECONDS
-from utils import trade_idle
+from utils import trade_idle, trade_admission
 from utils.trade_private import text as private_text
 from utils import trade_private_ui as private_ui
 BANNER_DIR=Path(__file__).resolve().parents[1] / 'png'
@@ -77,6 +77,8 @@ class NewTrading(commands.Cog):
 
     async def transition(self,ident,old,new,actor,details=None):
         async with db.transaction() as cur:
+            if old=='pending' and new=='confirmed':
+                await trade_admission.confirm(cur,ident,actor)
             await cur.execute('UPDATE orders SET status=%s WHERE id=%s AND status=%s',(new,ident,old))
             if cur.rowcount!=1: raise OrderStateChanged('订单状态已改变，请使用最新交易消息')
             await cur.execute('INSERT INTO audit(actor_id,action,details,order_id) VALUES(%s,%s,%s,%s)',
@@ -278,17 +280,21 @@ class NewTrading(commands.Cog):
             return await ctx.respond(msg,ephemeral=True) if hasattr(ctx,'respond') else await ctx.response.send_message(msg,ephemeral=True)
         modal=discord.ui.Modal(title=private_ui.text(user,'form'))
         item=discord.ui.InputText(label=private_ui.text(user,'item'),max_length=150)
-        amount=discord.ui.InputText(label=private_ui.text(user,'amount'),max_length=20)
+        amount=discord.ui.InputText(label=private_ui.text(user,'amount'),placeholder='10.50',max_length=20)
         terms=discord.ui.InputText(label=private_ui.text(user,'terms'),style=discord.InputTextStyle.long,max_length=1500,required=False)
         for field in (item,amount,terms): modal.add_item(field)
+        used=False
         async def submitted(inter):
+            nonlocal used
             await inter.response.defer(ephemeral=True)
             channel=None
             try:
-                if inter.user.id!=user.id: raise ValueError('仅发起者可提交此表单')
-                value=payments.money(amount.value)
-                if value!=value.quantize(Decimal('.01')): raise ValueError('商品金额最多两位小数')
-                if value<Decimal('5.01'): raise ValueError('商品金额不能低于 5.01 USDT。')
+                if not inter.guild or inter.guild.id!=guild.id or inter.user.id!=user.id:
+                    raise ValueError('仅发起者可在原社群提交此表单')
+                if used:
+                    return await inter.followup.send(private_ui.text(inter.user,'stale'),ephemeral=True)
+                value=payments.trade_price(amount.value)
+                used=True
                 await payments.payout_amount_quote(value)
                 member=await guild.fetch_member(other.id)
                 initiator=await guild.fetch_member(user.id)
@@ -296,16 +302,14 @@ class NewTrading(commands.Cog):
                 category=self.bot.get_channel(cfg.TRADE_CATEGORY_ID)
                 if not isinstance(category,discord.CategoryChannel) or category.guild.id!=guild.id:
                     raise ValueError('交易分类配置不正确')
+                if len(category.channels)>=cfg.TRADE_MAX_CHANNELS:
+                    raise trade_admission.AdmissionDenied('交易分类已达容量上限，请等待频道清理。','Trade category capacity reached. Please wait for channel cleanup.')
+                if guild.id in cfg.TRADE_ADMIN_ROLES:
+                    raise ValueError('交易管理员身份组不能设置为 @everyone，请管理员修正配置')
                 buyer,seller=(user.id,other.id) if buy else (other.id,user.id)
                 ident=uuid.uuid4().hex
-                # Lock balance rows in sorted order to serialize concurrent admission.
                 async with db.transaction() as cur:
-                    for uid in sorted((buyer,seller)):
-                        await cur.execute('INSERT INTO balances(user_id) VALUES(%s) ON DUPLICATE KEY UPDATE user_id=user_id',(uid,))
-                        await cur.execute('SELECT user_id FROM balances WHERE user_id=%s FOR UPDATE',(uid,))
-                        await cur.fetchone()
-                        await cur.execute(f"SELECT COUNT(*) AS n FROM orders WHERE (buyer_id=%s OR seller_id=%s) AND status NOT IN {TERMINAL_SQL}",(uid,uid))
-                        if (await cur.fetchone())['n']>=cfg.MAX_ACTIVE: raise ValueError(f'每位用户最多同时进行 {cfg.MAX_ACTIVE} 笔交易，请先完成或取消已有订单。')
+                    await trade_admission.reserve(cur,user.id,other.id)
                     await cur.execute('INSERT INTO orders(id,buyer_id,seller_id,initiator_id,source_id,item,terms,amount,fee) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s)',
                                       (ident,buyer,seller,user.id,source,item.value,terms.value or '',value,cfg.FEE))
                 overwrites={guild.default_role:discord.PermissionOverwrite(view_channel=False),guild.me:discord.PermissionOverwrite(view_channel=True,send_messages=True,read_message_history=True),initiator:discord.PermissionOverwrite(view_channel=True,send_messages=True,read_message_history=True),member:discord.PermissionOverwrite(view_channel=True,send_messages=True,read_message_history=True)}
@@ -422,6 +426,7 @@ class NewTrading(commands.Cog):
             owner=await inter.guild.fetch_member(thread.owner_id)
             return await self.start(inter,owner,buy=sell,source=thread.id)
         if not custom.startswith('new:trade:'): return
+        if len(custom.split(':',3))!=4: return
         _,_,action,ident=custom.split(':',3)
         row=await self.order(ident)
         if not row or inter.channel_id!=row['channel_id'] or inter.user.id not in (row['buyer_id'],row['seller_id']):
@@ -440,10 +445,12 @@ class NewTrading(commands.Cog):
             from utils.private_payment_help import render
             return await inter.followup.send(render(inter.user,invoice,guide_url),ephemeral=True,allowed_mentions=discord.AllowedMentions.none())
         if action=='collect':
+            from utils.payout_language import texts,payee_only
             payee=row['buyer_id'] if row['status']=='refund_ready' else row['seller_id']
-            if inter.user.id!=payee or row['status'] not in ('receipt_confirmed','refund_ready'):
-                from utils.payout_language import texts
+            if row['status'] not in ('receipt_confirmed','refund_ready'):
                 return await inter.response.send_message(texts(inter.user)['stale'],ephemeral=True)
+            if inter.user.id!=payee:
+                return await inter.response.send_message(payee_only(inter.user,refund=row['status']=='refund_ready'),ephemeral=True)
             return await self.address_modal(inter,row)
         await inter.response.defer(ephemeral=True)
         try:
@@ -529,7 +536,7 @@ class NewTrading(commands.Cog):
             elif action=='dispute':
                 if row['status'] not in ('paid','shipped'): raise ValueError('当前无法发起争议，请联系管理员')
                 await self.transition(ident,row['status'],'disputed',actor)
-                await self.alert('新社群订单发生争议：'+ident,notify_admins=True,fallback=inter.channel)
+                await self.alert(f"新社群订单发生争议：{ident}\n交易频道：<#{row['channel_id']}>",notify_admins=True,fallback=inter.channel)
             else: return
             await self.post(await self.order(ident))
             await inter.followup.send(private_text(inter.user,'done'),ephemeral=True)
@@ -1097,9 +1104,11 @@ class NewTrading(commands.Cog):
             return await ctx.followup.send('处理结果需核对，请查看订单状态，勿重复退款。',ephemeral=True)
         log.warning('Administrator settlement: actor=%s order=%s target=%s',ctx.author.id,order_id,target)
         try:
+            row=await self.order(order_id)
             if target=='manual_refunded': await self.manual_close_tick(order_id)
-            else: await self.post(await self.order(order_id),'管理员已核实并恢复自动关闭，频道约 5 分钟后关闭。' if target=='cancelled' else '')
-            await self.alert(f'管理员 {ctx.author.id} 已处理订单 {order_id}：{target}')
+            else: await self.post(row,'管理员已核实并恢复自动关闭，频道约 5 分钟后关闭。' if target=='cancelled' else '')
+            channel_ref=f"<#{row['channel_id']}>" if row and row.get('channel_id') else '未记录频道'
+            await self.alert(f'管理员 {ctx.author.id} 已处理订单 {order_id}：{target}\n交易频道：{channel_ref}')
         except Exception: log.exception('Settlement saved; notification failed: %s',order_id)
         await ctx.followup.send('处理已记录。手动退款只登记账本，不会再次转账；频道关闭通知会自动重试。' if target=='manual_refunded' else '处理决定已记录，请查看订单当前步骤。',ephemeral=True)
 

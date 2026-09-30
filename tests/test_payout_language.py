@@ -9,6 +9,24 @@ from utils.trade_language import PACKS
 from modules.new_trading import NewTrading
 
 class PayoutLanguageTests(unittest.IsolatedAsyncioTestCase):
+    async def test_wrong_participant_gets_step_specific_notice_without_payout(self):
+        self.assertEqual(set(pl.PAYEE_ONLY),set(pl.ROWS))
+        for language in pl.ROWS:
+            for refund in (False,True):
+                row=dict(id='order',channel_id=10,buyer_id=1,seller_id=2,
+                         status='refund_ready' if refund else 'receipt_confirmed')
+                member=NS(id=2 if refund else 1,roles=[NS(id=123)])
+                cog=object.__new__(NewTrading)
+                cog.order=AsyncMock(return_value=row)
+                cog.address_modal=AsyncMock()
+                inter=NS(data={'custom_id':'new:trade:collect:order'},guild=NS(id=pl.config.NEW.GUILD_ID),
+                         channel_id=10,user=member,response=NS(send_message=AsyncMock()))
+                with patch.object(pl.config.NEW,'LANGUAGES',{language:123}):
+                    await cog.on_interaction(inter)
+                    inter.response.send_message.assert_awaited_once_with(pl.payee_only(member,refund),ephemeral=True)
+                    self.assertNotEqual(pl.payee_only(member,refund),pl.texts(member)['stale'])
+                cog.address_modal.assert_not_awaited()
+
     async def test_every_language_modal_and_summary_preserves_amounts(self):
         self.assertEqual(set(pl.ROWS),set(PACKS))
         for language,row in pl.ROWS.items():

@@ -31,7 +31,11 @@ ENV/
 # Logs
 # =========================
 *.log
+*.log.*
 logs/
+.security-backup*/
+.venv-security*/
+security-*-audit.json
 
 # =========================
 # Databases / runtime data

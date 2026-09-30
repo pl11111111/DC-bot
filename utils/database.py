@@ -1521,16 +1521,8 @@ async def get_paying_transactions_with_unique_amounts() -> List[Dict]:
 
 # 抽奖系统相关函数
 async def create_giveaway(author_id: int, prize_name: str, winners_count: int, end_time: str, role_ids: str = "", credit_requirement: int = 0, prize_image: str = ""):
-    """创建一个新的抽奖"""
-    query = """
-        INSERT INTO giveaways
-        (author_id, prize_name, winners_count, end_time, role_ids, credit_requirement, prize_image, status, created_at)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW())
-    """
-    return await execute_query(
-        query, 
-        (author_id, prize_name, winners_count, end_time, role_ids, credit_requirement, prize_image, "active")
-    )
+    from utils.giveaway_credits import create
+    return await create(author_id, prize_name, winners_count, end_time, role_ids, credit_requirement, prize_image)
 
 async def update_giveaway_message(giveaway_id: int, message_id: int, channel_id: int):
     """更新抽奖消息ID和频道ID"""
@@ -1569,15 +1561,9 @@ async def update_giveaway_winners(giveaway_id: int, winner_ids: list):
     """
     return await execute_query(query, (winner_ids_str, giveaway_id))
 
-async def add_giveaway_participant(giveaway_id: int, user_id: int, credits_used: int = 0):
-    """添加抽奖参与者"""
-    query = """
-        INSERT INTO giveaway_participants
-        (giveaway_id, user_id, credits_used, joined_at)
-        VALUES (%s, %s, %s, NOW())
-        ON DUPLICATE KEY UPDATE joined_at = NOW()
-    """
-    return await execute_query(query, (giveaway_id, user_id, credits_used))
+async def add_giveaway_participant(giveaway_id, user_id, credits_used=0, *, channel_id, role_ids):
+    from utils.giveaway_credits import join
+    return await join(giveaway_id, user_id, credits_used, channel_id, role_ids)
 
 async def has_user_joined_giveaway(giveaway_id: int, user_id: int):
     """检查用户是否已参与抽奖"""

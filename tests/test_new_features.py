@@ -17,10 +17,21 @@ from modules.new_message_log import NewMessageLog
 
 class MoneyTests(unittest.TestCase):
     def test_invalid_amounts(self):
-        for value in ('NaN','Infinity','-1','0','1000001','0.0000001'):
-            with self.assertRaises(ValueError): p.money(value)
+        for value in ('NaN','Infinity','-1','0','1000001','0.0000001',
+                      '?id=1 AND 1=2',"1' OR '1'='1",'',None,'10 USDT','10,50','1e99999999999999999999'):
+            with self.subTest(value=value), self.assertRaises(ValueError): p.money(value)
     def test_decimal_precision(self):
         self.assertEqual(p.money('100.12'),Decimal('100.120000'))
+        self.assertEqual(p.money('7.104461'),Decimal('7.104461'))
+        self.assertEqual(p.money(Decimal('5.01')),Decimal('5.010000'))
+    def test_trade_price_accepts_only_unambiguous_prices(self):
+        for value,expected in [('5.01','5.010000'),('10','10.000000'),(' 10.50 ','10.500000'),('1000000.00','1000000.000000')]:
+            with self.subTest(value=value):
+                self.assertEqual(p.trade_price(value),Decimal(expected))
+        for value in ('5.01000001','5.00999999','10.001','1e1','1_0','10,50','1000000.01',
+                      '?id=1 AND 1=2',"1' OR '1'='1",'0','-10','','NaN','Infinity',None):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                p.trade_price(value)
     def test_embed_limits(self):
         with self.assertRaises(ValueError): embeds('title','x'*6000)
         with self.assertRaises(ValueError): embeds('title','body','file:///private')
@@ -102,7 +113,7 @@ class IsolationTests(unittest.IsolatedAsyncioTestCase):
         async def legacy(obj): calls.append(obj)
         legacy.__module__='modules.rental'
         bot.add_listener(legacy,'on_interaction')
-        listener=bot.extra_events['on_interaction'][0]
+        listener=bot._event_handlers['on_interaction'][0]
         await listener(NS(guild=NS(id=2),data={}))
         await listener(NS(guild=None,data={'custom_id':'new:trade:x'}))
         self.assertEqual(calls,[])
@@ -180,48 +191,15 @@ class OrderGuardTests(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(ValueError): await cog.transition('x','paid','shipped',1)
         self.assertEqual(len(calls),1)
 
-class LoadTests(unittest.IsolatedAsyncioTestCase):
-    async def test_all_extensions_load_without_connecting(self):
-        import main
-        bot=IsolatedBot(intents=discord.Intents.none())
-        for name in main.COGS_TO_LOAD: bot.load_extension(name)
-        self.assertNotIn('Trading',bot.cogs)
-        self.assertNotIn('Rental',bot.cogs)
-        self.assertNotIn('PaymentRecovery',bot.cogs)
-        self.assertIn('NewModeration',bot.cogs)
-        self.assertIn('NewTrading',bot.cogs)
-        self.assertIn('NewCommunity',bot.cogs)
-        right_click=[c for c in bot.pending_application_commands if c.name in ('开始交易(buy)','开始交易(sell)')]
-        self.assertEqual(len(right_click),2)
-        self.assertTrue(all(c.guild_ids==[2] for c in right_click))
-        for command in bot.pending_application_commands:
-            self.assertFalse(command.to_dict()['dm_permission'])
-        for command in bot.pending_application_commands:
-            module=getattr(getattr(command,'callback',None),'__module__','') or getattr(getattr(command,'cog',None),'__module__','')
-            if module.startswith('modules.new_'):
-                self.assertEqual(command.guild_ids,[2],command.name)
-            elif module.startswith('modules.'):
-                self.assertEqual(command.guild_ids,[1],command.name)
-        names={c.name for c in bot.pending_application_commands if c.guild_ids==[2]}
-        self.assertNotIn('new_trade_close_test',names)
-        self.assertNotIn('new_log_release',names)
-        self.assertNotIn('new_trade_review',names)
-        trade=next(c for c in bot.pending_application_commands if c.name=='new_trade')
-        self.assertEqual({c.name for c in trade.subcommands},{'review'})
-        self.assertNotIn('modules.party',main.COGS_TO_LOAD)
-        self.assertNotIn('party',{c.name for c in bot.pending_application_commands})
-        for command in bot.pending_application_commands:
-            if command.guild_ids==[2] and isinstance(command,(discord.SlashCommand,discord.SlashCommandGroup)):
-                self.assertTrue(command.default_member_permissions.administrator)
-        self.assertNotIn('查询积分',names)
-        self.assertTrue({'new_panel','new_forum_rules','new_notice'}<=names)
-        for name in list(bot.extensions): bot.unload_extension(name)
-        await bot.close()
-        # Existing legacy modules create tasks outside Cog cleanup. Cancel in this test only.
-        current=asyncio.current_task()
-        pending=[t for t in asyncio.all_tasks() if t is not current]
-        for task in pending: task.cancel()
-        await asyncio.gather(*pending,return_exceptions=True)
+class LoadTests(unittest.TestCase):
+    def test_all_extensions_load_without_connecting(self):
+        import subprocess
+        import sys
+        from pathlib import Path
+        result = subprocess.run([sys.executable, '-m', 'tests.smoke_load_extensions'],
+            cwd=Path(__file__).resolve().parent.parent, capture_output=True, text=True,
+            encoding='utf-8', errors='replace', timeout=30)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
 class TradeCommandPermissionTests(unittest.IsolatedAsyncioTestCase):
     async def test_confirmation_checks_actor_role_guild_and_repeat_clicks(self):
@@ -304,6 +282,45 @@ class RetirementAndModerationTests(unittest.IsolatedAsyncioTestCase):
             for msg in (self.message(guild_id=1),self.message(roles=(3,))):
                 await cog.moderate(msg)
                 msg.delete.assert_not_awaited()
+
+    async def test_link_flood_still_deleted_without_reply_amplification(self):
+        from modules.new_moderation import NewModeration
+        from utils.abuse_guard import TokenBucket
+        cog=NewModeration(NS(get_cog=lambda name:None,user=NS(id=99)))
+        cog.warning_users=TokenBucket(1,30,clock=lambda:0)
+        cog.warning_budget=TokenBucket(5,30,max_keys=1,clock=lambda:0)
+        msg=self.message()
+        with patch('modules.new_moderation.cfg.LV3_ROLE_IDS',(3,)),patch('modules.new_moderation.db.audit',AsyncMock()):
+            for _ in range(10): await cog.moderate(msg)
+            self.assertEqual(msg.delete.await_count,10)
+            self.assertEqual(msg.channel.send.await_count,1)
+            for uid in range(100,110):
+                msg.author.id=uid
+                await cog.moderate(msg)
+            self.assertEqual(msg.delete.await_count,20)
+            self.assertEqual(msg.channel.send.await_count,5)
+
+    async def test_everyone_role_cannot_bypass_link_restriction(self):
+        from modules.new_moderation import NewModeration
+        cog=NewModeration(NS(get_cog=lambda name:None,user=NS(id=99)))
+        msg=self.message(roles=(2,))
+        with patch('modules.new_moderation.cfg.LV3_ROLE_IDS',(2,)),patch('modules.new_moderation.db.audit',AsyncMock()):
+            await cog.moderate(msg)
+        msg.delete.assert_awaited_once()
+
+    async def test_repeated_evidence_snapshot_does_not_exhaust_capacity(self):
+        from datetime import datetime, timezone
+        cog=object.__new__(NewMessageLog)
+        cog.lock=asyncio.Lock(); cog.bytes=0
+        cog.tracked=AsyncMock(return_value={'kind':'trade'})
+        msg=self.message(); msg.created_at=datetime.now(timezone.utc); msg.attachments=[]
+        query=AsyncMock(side_effect=[1,0,0,0])
+        with patch('modules.new_message_log.db.query',query):
+            await cog.on_message(msg)
+            size=cog.bytes
+            for _ in range(3): await cog.on_message(msg)
+        self.assertGreater(size,0)
+        self.assertEqual(cog.bytes,size)
 
     async def test_uncached_edit_checked_after_logging(self):
         cog=object.__new__(NewMessageLog)

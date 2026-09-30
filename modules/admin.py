@@ -5,6 +5,7 @@ import logging
 import config
 from utils import database
 import random
+import secrets
 from datetime import datetime
 import traceback
 
@@ -205,7 +206,7 @@ class Admin(commands.Cog):
                 
             # 抽取新获奖者
             new_winner_count = min(winners_count, len(participants))
-            new_winners = random.sample(participants, new_winner_count)
+            new_winners = secrets.SystemRandom().sample(participants, new_winner_count)
             new_winner_ids = [winner["user_id"] for winner in new_winners]
             
             # 更新获奖者
@@ -262,15 +263,9 @@ class Admin(commands.Cog):
                 return
                 
             if cancel:
-                # 取消抽奖
-                await database.update_giveaway_status(giveaway_id, "cancelled")
-                
-                # 获取参与者并退还积分
-                if giveaway["credit_requirement"] > 0:
-                    participants = await database.get_giveaway_participants(giveaway_id)
-                    for participant in participants:
-                        await database.add_user_credits(participant["user_id"], giveaway["credit_requirement"])
-                
+                from utils import giveaway_credits
+                await giveaway_credits.settle(giveaway_id, ctx.author.id, 'refunded', cancel=True)
+
                 # 获取频道和消息
                 channel = self.bot.get_channel(giveaway["channel_id"])
                 if channel:
@@ -325,108 +320,20 @@ class Admin(commands.Cog):
         ctx,
         giveaway_id: str = Option(description="抽奖ID", required=True)
     ):
-        """返还指定抽奖的所有参与者的积分（独立命令版本）"""
+        if (not ctx.guild or ctx.guild.id != config.GUILD_ID or
+                (ctx.guild.owner_id != ctx.author.id and
+                 not any(role.id == config.ADMIN_ROLE_ID for role in ctx.author.roles))):
+            return await ctx.respond('只有原社群拥有者或管理员可以使用此命令。', ephemeral=True)
+        await ctx.defer(ephemeral=True)
         try:
-            # 记录命令开始执行
-            logger.info(f"执行返还抽奖额度命令，抽奖ID: {giveaway_id}, 执行者: {ctx.author.id}")
-            
-            # 检查权限
-            is_owner = ctx.guild.owner_id == ctx.author.id
-            is_admin = False
-            for role in ctx.author.roles:
-                if role.id == config.ADMIN_ROLE_ID:
-                    is_admin = True
-                    break
-                    
-            if not (is_owner or is_admin):
-                logger.warning(f"用户 {ctx.author.id} 尝试无权限执行返还抽奖额度命令")
-                await ctx.respond("只有频道拥有者或管理员可以使用此命令！", ephemeral=True)
-                return
-                
-            # 立即响应以避免超时
-            await ctx.respond("正在处理，请稍候...", ephemeral=True)
-                
-            # 获取抽奖信息
-            logger.info(f"查询抽奖 {giveaway_id} 信息")
-            giveaway = await database.get_giveaway(giveaway_id)
-            
-            if not giveaway:
-                logger.warning(f"找不到抽奖ID: {giveaway_id}")
-                await ctx.send_followup("找不到指定的抽奖", ephemeral=True)
-                return
-                
-            # 获取参与者信息
-            logger.info(f"获取抽奖 {giveaway_id} 的参与者信息")
-            participants = await database.get_giveaway_participants(giveaway_id)
-            
-            if not participants:
-                logger.warning(f"抽奖 {giveaway_id} 没有参与者")
-                await ctx.send_followup("没有参与者", ephemeral=True)
-                return
-                
-            # 检查抽奖是否需要积分
-            try:
-                credit_requirement = int(giveaway.get("credit_requirement", 0))
-            except (ValueError, TypeError):
-                credit_requirement = 0
-                
-            logger.info(f"抽奖 {giveaway_id} 需要的积分: {credit_requirement}")
-            
-            if credit_requirement <= 0:
-                logger.warning(f"抽奖 {giveaway_id} 不需要消耗积分")
-                await ctx.send_followup("此抽奖不需要消耗积分", ephemeral=True)
-                return
-                
-            # 返还额度给参与者
-            refund_count = 0
-            failed_count = 0
-            logger.info(f"开始返还额度，参与者数量: {len(participants)}")
-            
-            for participant in participants:
-                try:
-                    user_id = participant["user_id"]
-                    if not user_id:
-                        logger.warning(f"参与者记录中没有有效的user_id: {participant}")
-                        failed_count += 1
-                        continue
-                        
-                    logger.info(f"返还额度给用户 {user_id}, 金额: {credit_requirement}")
-                    await database.add_user_credits(user_id, credit_requirement)
-                    refund_count += 1
-                except Exception as e:
-                    failed_count += 1
-                    logger.error(f"返还用户额度时出错: {str(e)}")
-                    
-            # 生成结果消息
-            total_credits = credit_requirement * refund_count
-            
-            result_message = (
-                f"返还结果:\n"
-                f"- 成功: {refund_count} 名参与者\n"
-                f"- 失败: {failed_count} 名参与者\n"
-                f"- 每人返还: {credit_requirement} 积分\n"
-                f"- 总计返还: {total_credits} 积分"
-            )
-            
-            logger.info(f"返还抽奖 {giveaway_id} 额度完成: {result_message}")
-            
-            # 发送结果
-            await ctx.send_followup(result_message, ephemeral=True)
-            
-            # 记录日志
-            logger.info(f"管理员 {ctx.author.id} ({ctx.author.name}) 为抽奖 {giveaway_id} 返还了 {total_credits} 积分给 {refund_count} 名参与者")
-            
-        except Exception as e:
-            error_traceback = traceback.format_exc()
-            logger.error(f"返还抽奖额度命令执行出错: {str(e)}\n{error_traceback}")
-            
-            try:
-                await ctx.send_followup(f"执行命令时出错: {str(e)}", ephemeral=True)
-            except:
-                try:
-                    await ctx.respond(f"执行命令时出错: {str(e)}", ephemeral=True)
-                except:
-                    logger.error("无法发送错误消息给用户")
+            from utils import giveaway_credits
+            result = await giveaway_credits.settle(giveaway_id, ctx.author.id, 'refunded')
+            await ctx.followup.send(f"已向 {result['count']} 位参与者返还共 {result['total']} 积分。", ephemeral=True)
+        except ValueError as exc:
+            await ctx.followup.send(str(exc), ephemeral=True)
+        except Exception:
+            logger.exception('Giveaway refund failed')
+            await ctx.followup.send('退款结果需要核对；已完成的退款不会重复执行。', ephemeral=True)
 
     @market_group.command(name="删除货币交易", description="删除指定的货币交易")
     async def delete_currency_trade_cmd(

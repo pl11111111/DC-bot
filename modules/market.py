@@ -55,6 +55,8 @@ class CurrencyTradeModal(discord.ui.Modal):
         self.add_item(self.price)
 
     async def callback(self, interaction: discord.Interaction):
+        if not interaction.guild or interaction.guild.id != config.GUILD_ID:
+            return await interaction.response.send_message('请在原社群使用市场功能。', ephemeral=True)
         try:
             # 立即延迟响应，防止交互超时
             await interaction.response.defer(ephemeral=True)
@@ -172,7 +174,7 @@ class CurrencyTradeModal(discord.ui.Modal):
                     )
                 except Exception as db_error:
                     logger.error(f"数据库创建货币交易失败: {db_error}")
-                    await interaction.followup.send(f"❌ 创建交易失败: {str(db_error)}", ephemeral=True)
+                    await interaction.followup.send("❌ 操作暂时无法完成，请稍后重试或联系管理员。", ephemeral=True)
                     return
                 
                 # 更新发帖计数
@@ -185,12 +187,12 @@ class CurrencyTradeModal(discord.ui.Modal):
                 await interaction.followup.send("✅ 交易信息已添加到市场！", ephemeral=True)
             except Exception as member_error:
                 logger.error(f"处理用户和交易数据时出错: {member_error}")
-                await interaction.followup.send(f"❌ 处理请求时出错: {str(member_error)}", ephemeral=True)
+                await interaction.followup.send("❌ 操作暂时无法完成，请稍后重试或联系管理员。", ephemeral=True)
         except Exception as e:
             logger.error(f"创建货币交易失败: {e}")
             # 尝试使用followup发送错误消息
             try:
-                await interaction.followup.send(f"❌ 创建交易失败: {str(e)}", ephemeral=True)
+                await interaction.followup.send("❌ 操作暂时无法完成，请稍后重试或联系管理员。", ephemeral=True)
             except Exception as follow_error:
                 logger.error(f"无法发送交易错误消息: {follow_error}")
 
@@ -217,6 +219,8 @@ class CurrencyTradeButton(discord.ui.Button):
         
     async def callback(self, interaction: discord.Interaction):
         """按钮点击回调"""
+        if not interaction.guild or interaction.guild.id != config.GUILD_ID:
+            return await interaction.response.send_message('请在原社群使用市场功能。', ephemeral=True)
         # 创建模态框
         modal = discord.ui.Modal(title=f"{self.label} 信息")
         
@@ -244,6 +248,9 @@ class CurrencyTradeButton(discord.ui.Button):
         
         # 定义模态框提交回调
         async def modal_callback(modal_interaction):
+            if (not modal_interaction.guild or modal_interaction.guild.id != config.GUILD_ID
+                    or modal_interaction.user.id != interaction.user.id):
+                return await modal_interaction.response.send_message('只有原申请人可以提交。', ephemeral=True)
             try:
                 # 立即延迟响应，防止交互超时
                 await modal_interaction.response.defer(ephemeral=True)
@@ -361,7 +368,7 @@ class CurrencyTradeButton(discord.ui.Button):
                         )
                     except Exception as db_error:
                         logger.error(f"数据库创建货币交易失败: {db_error}")
-                        await modal_interaction.followup.send(f"❌ 创建交易失败: {str(db_error)}", ephemeral=True)
+                        await modal_interaction.followup.send("❌ 操作暂时无法完成，请稍后重试或联系管理员。", ephemeral=True)
                         return
                     
                     # 更新用户发帖计数
@@ -374,12 +381,12 @@ class CurrencyTradeButton(discord.ui.Button):
                     await modal_interaction.followup.send("✅ 交易信息已添加到市场！", ephemeral=True)
                 except Exception as member_error:
                     logger.error(f"处理用户和交易数据时出错: {member_error}")
-                    await modal_interaction.followup.send(f"❌ 处理请求时出错: {str(member_error)}", ephemeral=True)
+                    await modal_interaction.followup.send("❌ 操作暂时无法完成，请稍后重试或联系管理员。", ephemeral=True)
             except Exception as e:
                 logger.error(f"处理货币交易按钮回调时出错: {e}")
                 # 尝试使用followup发送错误消息
                 try:
-                    await modal_interaction.followup.send(f"❌ 处理交易请求时出错: {str(e)}", ephemeral=True)
+                    await modal_interaction.followup.send("❌ 操作暂时无法完成，请稍后重试或联系管理员。", ephemeral=True)
                 except Exception as follow_error:
                     logger.error(f"无法发送交易错误消息: {follow_error}")
         
@@ -407,6 +414,8 @@ class Market(commands.Cog):
     @commands.Cog.listener()
     async def on_message(self, message):
         """监听消息以实现链接安全功能"""
+        if not message.guild or message.guild.id != config.GUILD_ID:
+            return
         # 忽略机器人消息
         if message.author.bot:
             return
@@ -415,25 +424,13 @@ class Market(commands.Cog):
         if message.channel.id in config.ALLOWED_CHANNELS:
             return
             
-        # 链接检测正则表达式
-        url_pattern = re.compile(
-            r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+'
-        )
-        
-        # 如果消息中包含白名单域名，允许通过
-        if any(domain in message.content for domain in config.WHITELISTED_DOMAINS):
-            return
-            
         # 确保消息内容是字符串
         if not message.content or not isinstance(message.content, str):
             return
             
-        # 如果配置允许图片链接且消息以图片扩展名结尾，允许通过
-        if config.ALLOW_IMAGE_LINKS and isinstance(message.content, str) and message.content.endswith(('.png', '.jpg', '.jpeg')):
-            return
-            
         # 检查消息中是否包含链接
-        if url_pattern.search(message.content):
+        from utils.link_safety import has_restricted_link
+        if has_restricted_link(message.content, config.WHITELISTED_DOMAINS, config.ALLOW_IMAGE_LINKS):
             # 检查是否拥有LV3角色
             if isinstance(config.LV3_ROLE_IDS, list):
                 has_lv3_role = any(role.id in config.LV3_ROLE_IDS for role in message.author.roles)
@@ -464,6 +461,19 @@ class Market(commands.Cog):
                 except Exception as e:
                     logger.error(f"删除消息失败: {str(e)}")
     
+    @commands.Cog.listener()
+    async def on_raw_message_edit(self, payload):
+        if payload.guild_id != config.GUILD_ID or 'content' not in payload.data:
+            return
+        try:
+            channel = self.bot.get_channel(payload.channel_id) or await self.bot.fetch_channel(payload.channel_id)
+            message = await channel.fetch_message(payload.message_id)
+            await self.on_message(message)
+        except discord.NotFound:
+            pass
+        except discord.HTTPException:
+            logger.exception('Could not moderate edited market message')
+
     @commands.Cog.listener()
     async def on_thread_create(self, thread):
         """监听帖子创建事件，根据帖子标签添加相应按钮"""
@@ -1156,10 +1166,10 @@ class Market(commands.Cog):
                 
             except Exception as e:
                 logger.error(f"创建交易帖子失败: {e}")
-                await ctx.followup.send(f"🔥 Error: {str(e)}", ephemeral=True)
+                await ctx.followup.send("Unable to complete the request. Please try again or contact an administrator.", ephemeral=True)
         except Exception as e:
             logger.error(f"处理交易命令时出错: {e}")
-            await ctx.followup.send(f"🔥 Error: {str(e)}", ephemeral=True)
+            await ctx.followup.send("Unable to complete the request. Please try again or contact an administrator.", ephemeral=True)
     
     # Remove the slash command but keep the functionality
     # as an internal method that can be called by the delete button
@@ -1225,7 +1235,7 @@ class Market(commands.Cog):
                         await interaction.followup.send("❌ 删除交易失败", ephemeral=True)
                 except Exception as e:
                     logger.error(f"删除交易回调处理出错: {e}")
-                    await interaction.followup.send(f"❌ 处理删除请求时出错: {str(e)}", ephemeral=True)
+                    await interaction.followup.send("❌ 操作暂时无法完成，请稍后重试或联系管理员。", ephemeral=True)
                     
             select.callback = delete_callback
             view = discord.ui.View(timeout=60)
@@ -1240,7 +1250,7 @@ class Market(commands.Cog):
             }.get(str(ctx.locale), "Select:"), view=view, ephemeral=True)
         except Exception as e:
             logger.error(f"处理删除交易请求时出错: {e}")
-            await ctx.followup.send(f"❌ 处理请求时出错: {str(e)}", ephemeral=True)
+            await ctx.followup.send("❌ 操作暂时无法完成，请稍后重试或联系管理员。", ephemeral=True)
     
     # -------------------------
     # 后台任务
@@ -1396,7 +1406,7 @@ class Market(commands.Cog):
                 except Exception as e:
                     logger.error(f"处理删除按钮回调时出错: {e}")
                     try:
-                        await interaction.followup.send(f"❌ 处理删除请求时出错: {str(e)}", ephemeral=True)
+                        await interaction.followup.send("❌ 操作暂时无法完成，请稍后重试或联系管理员。", ephemeral=True)
                     except Exception as follow_error:
                         logger.error(f"无法发送删除错误消息: {follow_error}")
             

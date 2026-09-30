@@ -114,12 +114,15 @@ def receipt_button(member):
     return label('receipt',{'status':'shipped','_languages':[language(member)]})
 
 def error(member,exc):
+    from utils.trade_admission import AdmissionDenied
+    if isinstance(exc,AdmissionDenied):
+        return exc.chinese if language(member)=='中文' else exc.english
     import logging
     logging.getLogger(__name__).warning('Private trade operation blocked: %s',exc)
     raw=str(exc)
     match=re.search(r'最多同时进行 (\d+) 笔',raw)
     if match: return text(member,'limit',limit=match[1])
-    if '金额' in raw and ('低于' in raw or '两位小数' in raw or '最低需' in raw or '金额必须大于' in raw):
+    if '金额' in raw and ('格式无效' in raw or '低于' in raw or '两位小数' in raw or '最低需' in raw or '金额必须大于' in raw):
         minimum=re.search(r'最低需 ([\d.]+)',raw)
         return text(member,'price',minimum=minimum[1] if minimum else '5.01')
     if raw.startswith(('只有买家','只有卖家','仅发起者')): return text(member,'denied')

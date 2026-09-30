@@ -31,223 +31,85 @@ logger.addFilter(GiveawayLogFilter())
 TIME_PATTERN = re.compile(r'^(\d+)([HhDdMm])$')
 
 class GiveawayView(discord.ui.View):
-    """抽奖参与视图"""
-    
+    """Entries are bound to the original guild/message and charged atomically."""
     def __init__(self, bot, giveaway_id, end_time):
-        super().__init__(timeout=None)  # 永久视图
-        self.bot = bot
-        self.giveaway_id = giveaway_id
-        self.end_time = end_time
+        super().__init__(timeout=None)
+        self.bot, self.giveaway_id, self.end_time = bot, giveaway_id, end_time
         self.participants_count = 0
-        
-        # 创建初始按钮
-        self.join_button = discord.ui.Button(
-            emoji="🎉", 
-            style=discord.ButtonStyle.primary, 
-            custom_id="giveaway_join"
-        )
+        self.join_button = discord.ui.Button(emoji="🎉", style=discord.ButtonStyle.primary, custom_id="giveaway_join")
         self.join_button.callback = self.join_button_callback
         self.add_item(self.join_button)
-        
-        # 更新按钮显示
         self.update_button_label()
-    
+
     def update_button_label(self):
-        """更新按钮标签显示参与人数"""
-        if self.participants_count > 0:
-            self.join_button.label = str(self.participants_count)
-        else:
-            self.join_button.label = None
-    
+        self.join_button.label = str(self.participants_count) if self.participants_count else None
+
     async def join_button_callback(self, interaction):
-        """用户参与抽奖的按钮"""
+        if not interaction.guild or interaction.guild.id != config.GUILD_ID:
+            return await interaction.response.send_message('请在原社群使用抽奖按钮。', ephemeral=True)
+        await interaction.response.defer(ephemeral=True)
         try:
-            # 获取抽奖信息
             giveaway = await database.get_giveaway(self.giveaway_id)
-            if not giveaway:
-                await interaction.response.send_message("此抽奖不存在或已结束", ephemeral=True)
-                return
-                
-            # 检查抽奖是否已结束
-            if giveaway["status"] != "active":
-                await interaction.response.send_message("此抽奖已结束", ephemeral=True)
-                return
-                
-            # 检查用户是否已参与
-            if await database.has_user_joined_giveaway(self.giveaway_id, interaction.user.id):
-                await interaction.response.send_message("您已经参与了此抽奖", ephemeral=True)
-                return
-                
-            # 检查身份组限制
-            if giveaway["role_ids"]:
-                role_ids = giveaway["role_ids"].split(",")
-                user_roles = [str(role.id) for role in interaction.user.roles]
-                if not any(role_id in user_roles for role_id in role_ids):
-                    role_mentions = ", ".join([f"<@&{role_id}>" for role_id in role_ids])
-                    await interaction.response.send_message(f"您没有参与此抽奖所需的身份组: {role_mentions}", ephemeral=True)
-                    return
-            
-            # 检查积分需求
-            if giveaway["credit_requirement"] > 0:
-                # 获取用户积分
-                user_credits = await database.get_user_credits(interaction.user.id)
-                
-                if user_credits < giveaway["credit_requirement"]:
-                    await interaction.response.send_message(
-                        f"您的积分不足。需要 {giveaway['credit_requirement']} 积分，您当前有 {user_credits} 积分",
-                        ephemeral=True
-                    )
-                    return
-                
-                # 创建确认视图
-                confirm_view = discord.ui.View(timeout=60)  # 60秒超时
-                
-                # 创建确认按钮
-                async def confirm_callback(confirm_interaction):
+            if (not giveaway or giveaway['status'] != 'active'
+                    or giveaway['channel_id'] != interaction.channel_id
+                    or giveaway['message_id'] != interaction.message.id):
+                raise ValueError('此抽奖已结束，或按钮不是原抽奖消息。')
+            from utils import giveaway_credits
+            cost = giveaway_credits.amount(giveaway['credit_requirement'])
+            owner = interaction.user.id
+            async def enter(click):
+                member = await click.guild.fetch_member(owner)
+                paid = await giveaway_credits.join(self.giveaway_id, owner, cost,
+                    click.channel_id, {r.id for r in member.roles})
+                self.participants_count = len(await database.get_giveaway_participants(self.giveaway_id))
+                self.update_button_label()
+                try:
+                    await interaction.message.edit(view=self)
+                except discord.HTTPException:
+                    logger.warning('Entry recorded but giveaway message refresh failed: %s', self.giveaway_id)
+                await click.followup.send(f'已成功参与抽奖，扣除 {paid} 积分。', ephemeral=True)
+            if cost:
+                view = discord.ui.View(timeout=60)
+                used = False
+                async def confirm(click):
+                    nonlocal used
+                    if (not click.guild or click.guild.id != config.GUILD_ID or click.user.id != owner
+                            or click.channel_id != interaction.channel_id):
+                        return await click.response.send_message('只有原申请人可以确认。', ephemeral=True)
+                    if used:
+                        return await click.response.send_message('此确认已处理，请查看第一次操作结果。', ephemeral=True)
+                    used = True
+                    await click.response.defer(ephemeral=True)
                     try:
-                        # 再次检查用户是否已参与，防止重复点击
-                        if await database.has_user_joined_giveaway(self.giveaway_id, interaction.user.id):
-                            await confirm_interaction.response.send_message("您已经参与了此抽奖", ephemeral=True)
-                            return
-                            
-                        # 禁用确认和取消按钮，防止重复点击
-                        for child in confirm_view.children:
-                            child.disabled = True
-                        await confirm_interaction.response.edit_message(view=confirm_view)
-                            
-                        # 扣除积分
-                        try:
-                            await database.add_user_credits(interaction.user.id, -giveaway["credit_requirement"])
-                        except Exception as e:
-                            logger.error(f"扣除用户 {interaction.user.id} 的积分时出错: {e}")
-                            await confirm_interaction.followup.send("扣除积分时出错，请稍后重试", ephemeral=True)
-                            return
-                        
-                        # 记录用户参与
-                        try:
-                            await database.add_giveaway_participant(
-                                self.giveaway_id, 
-                                interaction.user.id, 
-                                giveaway["credit_requirement"]
-                            )
-                        except Exception as e:
-                            logger.error(f"记录用户 {interaction.user.id} 参与抽奖 {self.giveaway_id} 时出错: {e}")
-                            # 尝试退还积分
-                            try:
-                                await database.add_user_credits(interaction.user.id, giveaway["credit_requirement"])
-                                await confirm_interaction.followup.send("参与抽奖时出错，已退还扣除的积分", ephemeral=True)
-                            except:
-                                await confirm_interaction.followup.send("参与抽奖时出错，请联系管理员手动退还积分", ephemeral=True)
-                            return
-                        
-                        # 更新参与人数
-                        self.participants_count += 1
-                        self.update_button_label()
-                        
-                        # 尝试获取并更新原始抽奖消息
-                        try:
-                            channel = confirm_interaction.guild.get_channel(giveaway["channel_id"])
-                            if channel:
-                                try:
-                                    original_message = await channel.fetch_message(giveaway["message_id"])
-                                    if original_message:
-                                        await original_message.edit(view=self)
-                                except discord.NotFound:
-                                    logger.warning(f"无法找到抽奖消息 {giveaway['message_id']} 进行更新")
-                                except Exception as e:
-                                    logger.error(f"更新抽奖消息时出错: {str(e)}")
-                        except Exception as e:
-                            logger.error(f"获取抽奖频道出错: {str(e)}")
-                        
-                        # 使用followup而不是response.send_message，因为我们已经用了edit_message
-                        await confirm_interaction.followup.send(
-                            f"您已成功参与抽奖！已扣除 {giveaway['credit_requirement']} 积分。如果中奖，积分将返还给抽奖发起人。",
-                            ephemeral=True
-                        )
-                    except discord.errors.InteractionResponded:
-                        # 如果交互已经响应过，使用followup
-                        await confirm_interaction.followup.send(
-                            f"您已成功参与抽奖！已扣除 {giveaway['credit_requirement']} 积分。如果中奖，积分将返还给抽奖发起人。",
-                            ephemeral=True
-                        )
-                    except Exception as e:
-                        logger.error(f"确认参与抽奖时出错: {str(e)}", exc_info=True)
-                        try:
-                            await confirm_interaction.followup.send("参与抽奖时出错，请稍后再试", ephemeral=True)
-                        except:
-                            pass
-                
-                # 创建取消按钮
-                async def cancel_callback(cancel_interaction):
-                    try:
-                        # 禁用确认和取消按钮，防止重复点击
-                        for child in confirm_view.children:
-                            child.disabled = True
-                        await cancel_interaction.response.edit_message(content="您已取消参与此抽奖", view=confirm_view)
-                    except Exception as e:
-                        logger.error(f"取消参与抽奖时出错: {str(e)}", exc_info=True)
-                        try:
-                            await cancel_interaction.followup.send("取消操作时出错，请稍后再试", ephemeral=True)
-                        except:
-                            pass
-                
-                # 添加按钮到视图
-                confirm_button = discord.ui.Button(label="确认参与", style=discord.ButtonStyle.primary)
-                confirm_button.callback = confirm_callback
-                
-                cancel_button = discord.ui.Button(label="取消", style=discord.ButtonStyle.secondary)
-                cancel_button.callback = cancel_callback
-                
-                confirm_view.add_item(confirm_button)
-                confirm_view.add_item(cancel_button)
-                
-                await interaction.response.send_message(
-                    f"参与此抽奖需要 {giveaway['credit_requirement']} 积分。确认参与吗？",
-                    view=confirm_view,
-                    ephemeral=True
-                )
+                        await enter(click)
+                    except ValueError as exc:
+                        await click.followup.send(str(exc), ephemeral=True)
+                    except Exception:
+                        logger.exception('Giveaway entry failed')
+                        await click.followup.send('参与结果需要核对，请重新查看抽奖记录。', ephemeral=True)
+                button = discord.ui.Button(label='确认参与', style=discord.ButtonStyle.primary)
+                button.callback = confirm
+                view.add_item(button)
+                async def cancel(click):
+                    nonlocal used
+                    if (not click.guild or click.guild.id != config.GUILD_ID
+                            or click.user.id != owner or click.channel_id != interaction.channel_id):
+                        return await click.response.send_message('只有原申请人可以取消。', ephemeral=True)
+                    if used:
+                        return await click.response.send_message('此确认已处理，请查看第一次操作结果。', ephemeral=True)
+                    used = True
+                    await click.response.edit_message(content='您已取消参与此抽奖。', view=None)
+                cancel_button = discord.ui.Button(label='取消', style=discord.ButtonStyle.secondary)
+                cancel_button.callback = cancel
+                view.add_item(cancel_button)
+                await interaction.followup.send(f'参与此抽奖需要 {cost} 积分。确认参与吗？', view=view, ephemeral=True)
             else:
-                # 无需积分直接参与
-                try:
-                    await database.add_giveaway_participant(self.giveaway_id, interaction.user.id, 0)
-                    
-                    # 更新参与人数
-                    self.participants_count += 1
-                    self.update_button_label()
-                    
-                    # 尝试获取并更新原始抽奖消息
-                    try:
-                        channel = interaction.guild.get_channel(giveaway["channel_id"])
-                        if channel:
-                            try:
-                                original_message = await channel.fetch_message(giveaway["message_id"])
-                                if original_message:
-                                    await original_message.edit(view=self)
-                            except discord.NotFound:
-                                logger.warning(f"无法找到抽奖消息 {giveaway['message_id']} 进行更新")
-                            except Exception as e:
-                                logger.error(f"更新抽奖消息时出错: {str(e)}")
-                    except Exception as e:
-                        logger.error(f"获取抽奖频道出错: {str(e)}")
-                    
-                    await interaction.response.send_message("您已成功参与抽奖！", ephemeral=True)
-                except Exception as e:
-                    logger.error(f"用户参与抽奖时出错: {e}")
-                    await interaction.response.send_message("参与抽奖时出错，请稍后再试", ephemeral=True)
-                
-        except discord.errors.InteractionResponded:
-            # 如果交互已经响应过，忽略
-            pass
-        except Exception as e:
-            logger.error(f"参与抽奖出错: {str(e)}", exc_info=True)
-            try:
-                await interaction.response.send_message("参与抽奖时出错，请稍后再试", ephemeral=True)
-            except:
-                # 如果已经响应，使用followup
-                try:
-                    await interaction.followup.send("参与抽奖时出错，请稍后再试", ephemeral=True)
-                except:
-                    pass
+                await enter(interaction)
+        except ValueError as exc:
+            await interaction.followup.send(str(exc), ephemeral=True)
+        except Exception:
+            logger.exception('Giveaway entry failed')
+            await interaction.followup.send('暂时无法参与，请稍后重试。', ephemeral=True)
 
 
 class GiveawayPreviewView(discord.ui.View):
@@ -259,6 +121,10 @@ class GiveawayPreviewView(discord.ui.View):
         self.author_id = author_id
         self.giveaway_data = giveaway_data
     
+    async def interaction_check(self, interaction):
+        return bool(interaction.guild and interaction.guild.id == config.GUILD_ID
+                    and interaction.user.id == self.author_id)
+
     @discord.ui.button(label="修改", style=discord.ButtonStyle.primary)
     async def edit_button(self, button, interaction):
         """修改抽奖信息"""
@@ -709,6 +575,9 @@ class GiveawayPreviewView(discord.ui.View):
             await interaction.response.send_message("只有抽奖发起人可以发布", ephemeral=True)
             return
             
+        if getattr(self, '_published', False):
+            return await interaction.response.send_message('此预览已提交，请检查原抽奖消息。', ephemeral=True)
+        self._published = True
         # 停用所有按钮
         for child in self.children:
             child.disabled = True
@@ -789,105 +658,35 @@ class GiveawayPreviewView(discord.ui.View):
 
 
 class GiveawayAdminView(discord.ui.View):
-    """抽奖结束后的管理员专用视图"""
-    
     def __init__(self, bot, giveaway_id):
-        super().__init__(timeout=None)  # 永久视图
-        self.bot = bot
-        self.giveaway_id = giveaway_id
-    
-    @discord.ui.button(label="发放积分给发起者", style=discord.ButtonStyle.success)
+        super().__init__(timeout=None)
+        self.bot, self.giveaway_id = bot, giveaway_id
+
+    async def settle(self, interaction, outcome):
+        if (not interaction.guild or interaction.guild.id != config.GUILD_ID
+                or not interaction.user.guild_permissions.administrator):
+            return await interaction.response.send_message('只有原社群管理员可以使用此功能。', ephemeral=True)
+        await interaction.response.defer(ephemeral=True)
+        try:
+            from utils import giveaway_credits
+            result = await giveaway_credits.settle(self.giveaway_id, interaction.user.id, outcome)
+            for item in self.children:
+                item.disabled = True
+            await interaction.edit_original_response(view=self)
+            await interaction.followup.send(f"积分结算已完成，共 {result['total']} 积分。", ephemeral=True)
+        except ValueError as exc:
+            await interaction.followup.send(str(exc), ephemeral=True)
+        except Exception:
+            logger.exception('Giveaway credit settlement failed')
+            await interaction.followup.send('操作结果需要核对；已完成的结算不会重复执行。', ephemeral=True)
+
+    @discord.ui.button(label='发放积分给发起者', style=discord.ButtonStyle.success)
     async def grant_to_host_button(self, button, interaction):
-        """发放所有参与者的积分给抽奖发起者"""
-        # 检查权限
-        if not interaction.user.guild_permissions.administrator:
-            await interaction.response.send_message("只有管理员可以使用此功能", ephemeral=True)
-            return
-        
-        try:
-            # 获取抽奖信息
-            giveaway = await database.get_giveaway(self.giveaway_id)
-            if not giveaway:
-                await interaction.response.send_message("找不到此抽奖信息", ephemeral=True)
-                return
-            
-            # 获取参与者信息
-            participants = await database.get_giveaway_participants(self.giveaway_id)
-            if not participants:
-                await interaction.response.send_message("没有参与者", ephemeral=True)
-                return
-            
-            # 计算总积分
-            credit_requirement = giveaway.get("credit_requirement", 0)
-            if credit_requirement <= 0:
-                await interaction.response.send_message("此抽奖不需要消耗积分", ephemeral=True)
-                return
-            
-            total_credits = credit_requirement * len(participants)
-            
-            # 发放积分给发起者
-            await database.add_user_credits(giveaway["author_id"], total_credits)
-            
-            # 禁用所有按钮
-            for item in self.children:
-                item.disabled = True
-            await interaction.response.edit_message(view=self)
-            
-            await interaction.followup.send(
-                f"已将 {total_credits} 积分 ({credit_requirement} × {len(participants)}) 发放给抽奖发起者 <@{giveaway['author_id']}>。其他按钮已被禁用。",
-                ephemeral=True
-            )
-            
-        except Exception as e:
-            logger.error(f"发放积分给发起者出错: {str(e)}", exc_info=True)
-            await interaction.response.send_message("操作失败，请稍后再试", ephemeral=True)
-    
-    @discord.ui.button(label="返还积分给参与者", style=discord.ButtonStyle.primary)
+        await self.settle(interaction, 'host')
+
+    @discord.ui.button(label='返还积分给参与者', style=discord.ButtonStyle.primary)
     async def refund_to_participants_button(self, button, interaction):
-        """返还积分给所有参与者"""
-        # 检查权限
-        if not interaction.user.guild_permissions.administrator:
-            await interaction.response.send_message("只有管理员可以使用此功能", ephemeral=True)
-            return
-        
-        try:
-            # 获取抽奖信息
-            giveaway = await database.get_giveaway(self.giveaway_id)
-            if not giveaway:
-                await interaction.response.send_message("找不到此抽奖信息", ephemeral=True)
-                return
-            
-            # 获取参与者信息
-            participants = await database.get_giveaway_participants(self.giveaway_id)
-            if not participants:
-                await interaction.response.send_message("没有参与者", ephemeral=True)
-                return
-            
-            # 计算总积分
-            credit_requirement = giveaway.get("credit_requirement", 0)
-            if credit_requirement <= 0:
-                await interaction.response.send_message("此抽奖不需要消耗积分", ephemeral=True)
-                return
-            
-            # 返还积分给参与者
-            refund_count = 0
-            for participant in participants:
-                await database.add_user_credits(participant["user_id"], credit_requirement)
-                refund_count += 1
-            
-            # 禁用所有按钮
-            for item in self.children:
-                item.disabled = True
-            await interaction.response.edit_message(view=self)
-            
-            await interaction.followup.send(
-                f"已将 {credit_requirement} 积分返还给 {refund_count} 名参与者，总共 {credit_requirement * refund_count} 积分。其他按钮已被禁用。",
-                ephemeral=True
-            )
-            
-        except Exception as e:
-            logger.error(f"返还积分给参与者出错: {str(e)}", exc_info=True)
-            await interaction.response.send_message("操作失败，请稍后再试", ephemeral=True)
+        await self.settle(interaction, 'refunded')
 
 
 def create_giveaway_embed(prize_name, winners_count, end_time, host, giveaway_id, participants_count, role_ids=None, credit_requirement=0, prize_image=None):
@@ -998,15 +797,12 @@ async def end_giveaway(bot, giveaway_id, message_id, channel_id):
             logger.info(f"抽奖 {giveaway_id} 的结束任务被取消")
             return
             
-        # 获取抽奖信息
-        giveaway = await database.get_giveaway(giveaway_id)
-        if not giveaway or giveaway["status"] != "active":
-            logger.warning(f"抽奖 {giveaway_id} 不存在或已结束")
+        from utils import giveaway_credits
+        finished = await giveaway_credits.finish(giveaway_id)
+        if finished is None:
             return
-        
-        # 获取参与者
-        participants = await database.get_giveaway_participants(giveaway_id)
-        
+        giveaway, participants, winner_ids = finished
+
         # 获取频道和消息
         channel = bot.get_channel(channel_id)
         if not channel:
@@ -1023,12 +819,6 @@ async def end_giveaway(bot, giveaway_id, message_id, channel_id):
         
         # 如果没有参与者
         if not participants:
-            # 更新抽奖状态
-            try:
-                await database.update_giveaway_status(giveaway_id, "ended")
-            except Exception as e:
-                logger.error(f"更新抽奖 {giveaway_id} 状态时出错: {str(e)}")
-            
             # 更新消息
             if message:
                 try:
@@ -1052,18 +842,6 @@ async def end_giveaway(bot, giveaway_id, message_id, channel_id):
                 logger.error(f"发送抽奖 {giveaway_id} 的结束通知时出错: {str(e)}")
                 
             return
-        
-        # 选择获奖者
-        winner_count = min(giveaway["winners_count"], len(participants))
-        winners = random.sample(participants, winner_count)
-        
-        # 更新抽奖状态和获奖者
-        winner_ids = [winner["user_id"] for winner in winners]
-        try:
-            await database.update_giveaway_winners(giveaway_id, winner_ids)
-            await database.update_giveaway_status(giveaway_id, "ended")
-        except Exception as e:
-            logger.error(f"更新抽奖 {giveaway_id} 的获奖者时出错: {str(e)}")
         
         # 更新消息
         if message:
@@ -1106,11 +884,6 @@ async def end_giveaway(bot, giveaway_id, message_id, channel_id):
         return
     except Exception as e:
         logger.error(f"结束抽奖 {giveaway_id} 时出错: {str(e)}", exc_info=True)
-        # 尝试更新抽奖状态为已结束，避免悬挂状态
-        try:
-            await database.update_giveaway_status(giveaway_id, "ended")
-        except:
-            pass
 
 
 def parse_time(time_str):

@@ -2,6 +2,7 @@ import discord
 import logging
 import string
 import random
+import secrets
 import asyncio
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, List, Tuple, Any
@@ -13,7 +14,7 @@ logger = logging.getLogger(__name__)
 def generate_invite_code(length: int = 8) -> str:
     """生成一个随机的字母数字邀请码。"""
     characters = string.ascii_letters + string.digits
-    return ''.join(random.choice(characters) for _ in range(length))
+    return ''.join(secrets.choice(characters) for _ in range(length))
 
 def format_amount(amount: float, is_escrow_fee: bool = False) -> str:
     """格式化加密货币金额，使用适当的精度。

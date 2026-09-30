@@ -7,6 +7,22 @@ from discord.ext import commands
 LEGACY={'modules.trading','modules.rental','modules.social','modules.admin','modules.market','modules.giveaway','modules.party'}
 
 class IsolatedBot(commands.Bot):
+    def _get_state(self, **options):
+        from utils.abuse_guard import GuardedConnectionState
+        return GuardedConnectionState(dispatch=self.dispatch, handlers=self._handlers,
+            hooks=self._hooks, http=self.http, loop=self.loop, **options)
+
+    async def process_commands(self, message):
+        if (not message.guild or message.guild.id not in (config.GUILD_ID,config.NEW.GUILD_ID)
+                or message.author.bot or not (message.content or '').startswith('!')):
+            return
+        gate = self._connection.abuse_gate
+        if not gate.users.allow((message.guild.id,message.author.id)):
+            return
+        if not gate.guilds.allow((message.guild.id,'ordinary')):
+            return
+        return await super().process_commands(message)
+
     async def process_application_commands(self,interaction,auto_sync=None):
         if interaction.guild is None:
             if not interaction.response.is_done():
@@ -18,7 +34,7 @@ class IsolatedBot(commands.Bot):
         return await super().process_application_commands(interaction,auto_sync=auto_sync)
 
     def add_application_command(self,command):
-        command.guild_only=True
+        command.contexts={discord.InteractionContextType.guild}
         module=getattr(getattr(command,'callback',None),'__module__','')
         if not module:
             module=getattr(getattr(command,'cog',None),'__module__','')
@@ -34,7 +50,7 @@ class IsolatedBot(commands.Bot):
             command.guild_ids=[config.NEW.GUILD_ID]
             if isinstance(command,(discord.SlashCommand,discord.SlashCommandGroup)):
                 command.default_member_permissions=discord.Permissions(administrator=True)
-                command.guild_only=True
+                command.contexts={discord.InteractionContextType.guild}
         return super().add_application_command(command)
 
     def add_listener(self,func,name=None):

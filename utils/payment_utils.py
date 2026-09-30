@@ -1,4 +1,4 @@
-import random
+import secrets
 import os
 import qrcode
 from io import BytesIO
@@ -49,11 +49,8 @@ async def generate_unique_amount(base_amount: float, transaction_id: int) -> Tup
     attempts = 0
     
     while attempts < max_attempts:
-        # 使用交易ID和尝试次数作为随机种子，确保每次生成不同的随机数
-        random.seed(transaction_id + attempts)
-        
         # 生成4位随机数作为唯一验证码
-        unique_digits = random.randint(1000, 9999)
+        unique_digits = secrets.randbelow(9000) + 1000
         
         # 构建唯一金额：基础金额 + 验证码/1000000
         # 这将使验证码成为小数点后第3-6位数字

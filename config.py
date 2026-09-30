@@ -1,8 +1,9 @@
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 
 # 从.env文件加载环境变量
-load_dotenv()
+load_dotenv(Path(__file__).resolve().with_name('.env'))
 
 # New guild settings are namespaced; all existing settings below stay unchanged.
 from utils import new_config as NEW

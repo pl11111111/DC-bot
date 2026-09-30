@@ -62,6 +62,23 @@ ROWS={
 'Nhập địa chỉ USDT-BEP20 hợp lệ.','Không thể lấy báo giá rút tiền. Liên hệ quản trị viên nếu lỗi tiếp diễn.','Kết quả thanh toán cần được kiểm tra. Liên hệ quản trị viên; không gửi lại yêu cầu.',
 'Phí đã thay đổi. Mở lại mục nhận tiền để xem báo giá mới.','Xác nhận này không còn hiệu lực. Xem tin nhắn đơn hàng mới nhất; không gửi lại yêu cầu.')}
 
+PAYEE_ONLY={
+    'English':('Only the seller can claim these funds. As the buyer, no action is needed; please wait for the seller to claim them.','Only the buyer can claim this refund. As the seller, no action is needed; please wait for the buyer to claim it.'),
+    '中文':('货款由卖家领取。你是买家，无需操作，请等待卖家领取货款。','退款由买家领取。你是卖家，无需操作，请等待买家领取退款。'),
+    '日本語':('代金を受け取れるのは売り手のみです。買い手の操作は不要です。売り手が代金を受け取るまでお待ちください。','返金を受け取れるのは買い手のみです。売り手の操作は不要です。買い手が返金を受け取るまでお待ちください。'),
+    '한국어':('판매 대금은 판매자만 수령할 수 있습니다. 구매자는 별도로 조작할 필요가 없습니다. 판매자가 대금을 수령할 때까지 기다려 주세요.','환불금은 구매자만 수령할 수 있습니다. 판매자는 별도로 조작할 필요가 없습니다. 구매자가 환불금을 수령할 때까지 기다려 주세요.'),
+    'Bahasa Indonesia':('Hanya penjual yang dapat menerima hasil penjualan ini. Sebagai pembeli, Anda tidak perlu melakukan apa pun; tunggu penjual mengambil dananya.','Hanya pembeli yang dapat menerima pengembalian dana ini. Sebagai penjual, Anda tidak perlu melakukan apa pun; tunggu pembeli mengambil pengembaliannya.'),
+    'Bahasa Melayu':('Hanya penjual boleh menerima bayaran ini. Sebagai pembeli, anda tidak perlu berbuat apa-apa; tunggu penjual menerima bayaran.','Hanya pembeli boleh menerima bayaran balik ini. Sebagai penjual, anda tidak perlu berbuat apa-apa; tunggu pembeli menerima bayaran balik.'),
+    'Tagalog':('Nagbebenta lamang ang maaaring kumuha ng bayad na ito. Bilang mamimili, wala ka nang kailangang gawin; hintaying kunin ng nagbebenta ang bayad.','Mamimili lamang ang maaaring kumuha ng refund na ito. Bilang nagbebenta, wala ka nang kailangang gawin; hintaying kunin ng mamimili ang refund.'),
+    'Português':('Somente o vendedor pode receber este pagamento. Como comprador, você não precisa fazer nada; aguarde o vendedor solicitar o recebimento.','Somente o comprador pode receber este reembolso. Como vendedor, você não precisa fazer nada; aguarde o comprador solicitar o reembolso.'),
+    'Español':('Solo el vendedor puede cobrar este pago. Como comprador, no necesitas hacer nada; espera a que el vendedor lo cobre.','Solo el comprador puede recibir este reembolso. Como vendedor, no necesitas hacer nada; espera a que el comprador lo reciba.'),
+    'ภาษาไทย':('เฉพาะผู้ขายเท่านั้นที่รับเงินค่าสินค้านี้ได้ คุณเป็นผู้ซื้อจึงไม่ต้องดำเนินการใด ๆ โปรดรอผู้ขายรับเงินค่าสินค้า','เฉพาะผู้ซื้อเท่านั้นที่รับเงินคืนนี้ได้ คุณเป็นผู้ขายจึงไม่ต้องดำเนินการใด ๆ โปรดรอผู้ซื้อรับเงินคืน'),
+    'Tiếng Việt':('Chỉ người bán mới có thể nhận khoản tiền bán hàng này. Bạn là người mua nên không cần thao tác; vui lòng chờ người bán nhận tiền.','Chỉ người mua mới có thể nhận khoản hoàn tiền này. Bạn là người bán nên không cần thao tác; vui lòng chờ người mua nhận tiền hoàn.')
+}
+
+def payee_only(member,refund=False):
+    return PAYEE_ONLY[language(member)][1 if refund else 0]
+
 def language(member):
     roles={r.id for r in getattr(member,'roles',[])}
     return next((name for name,rid in config.NEW.LANGUAGES.items() if rid and rid in roles and name in ROWS),'English')

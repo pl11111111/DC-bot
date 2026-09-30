@@ -26,8 +26,9 @@ def role_error(role,guild,setting):
     if role.managed: return prefix+'this role is managed by an integration and cannot be assigned by this bot.'
     if role.id in set(cfg.TRADE_ADMIN_ROLES+cfg.NOTICE_ADMIN_ROLES):
         return prefix+'this is a configured administrator role and cannot be self-assigned.'
-    if role.permissions.administrator or role.permissions.manage_roles:
-        return prefix+'this role has Administrator or Manage Roles permission and cannot be self-assigned.'
+    from utils.security import privileged_role
+    if privileged_role(role):
+        return prefix+'this role has privileged permissions and cannot be self-assigned.'
     if not guild.me: return prefix+'bot membership information is unavailable. Please retry.'
     if not guild.me.guild_permissions.manage_roles: return prefix+'the bot needs Manage Roles permission.'
     if not role<guild.me.top_role: return prefix+'move the bot role above this role in Server Settings > Roles.'

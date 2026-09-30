@@ -3,6 +3,8 @@ from discord.ext import commands
 import logging
 import os
 import asyncio
+from logging.handlers import RotatingFileHandler
+from utils.security import RedactingFormatter
 from typing import List, Optional
 
 import config
@@ -38,14 +40,16 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler("bot.log", encoding='utf-8', delay=True),
+        RotatingFileHandler("bot.log", maxBytes=10_000_000, backupCount=5, encoding='utf-8', delay=True),
         logging.StreamHandler()
-    ]
+    ],
+    force=True
 )
 
 # 添加日志过滤器
 for handler in logging.root.handlers:
     handler.addFilter(LogFilter())
+    handler.setFormatter(RedactingFormatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
     
 logger = logging.getLogger(__name__)
 
@@ -56,7 +60,8 @@ intents.message_content = True  # 需要消息内容权限来处理命令
 intents.voice_states = True  # 需要语音状态权限来处理语音频道的操作
 
 # 创建机器人实例 (使用py-cord)
-bot = IsolatedBot(command_prefix="!", intents=intents)
+bot = IsolatedBot(command_prefix="!", intents=intents,
+                  allowed_mentions=discord.AllowedMentions(everyone=False, roles=False, users=True, replied_user=False))
 bot.add_check(command_allowed)
 
 # 加载组件
@@ -264,7 +269,7 @@ async def on_error(event, *args, **kwargs):
                 logger.error(f"无法响应交互: {e}")
     
     # 记录错误信息
-    logger.error(f"事件 {event} 中的错误: {args}")
+    logger.error('事件 %s 中的错误（不记录交互或消息原文）', event)
     
     # 打印更详细的错误信息，以便调试
     import traceback

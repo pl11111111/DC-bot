@@ -5,6 +5,7 @@ import discord
 from discord.ext import commands
 import config
 from utils import new_store as db
+from utils.abuse_guard import TokenBucket
 
 cfg = config.NEW
 log = logging.getLogger(__name__)
@@ -18,11 +19,13 @@ def contains_link(text):
 class NewModeration(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.warning_users = TokenBucket(1,30)
+        self.warning_budget = TokenBucket(5,30,max_keys=1)
 
     @commands.Cog.listener()
     async def on_ready(self):
         guild = self.bot.get_guild(cfg.GUILD_ID)
-        if guild and not any(guild.get_role(rid) for rid in cfg.LV3_ROLE_IDS):
+        if guild and not any(rid!=guild.id and guild.get_role(rid) for rid in cfg.LV3_ROLE_IDS):
             log.error('NEW_LV3_ROLE_IDS missing/invalid: links are blocked for all human members in the new guild')
 
     async def moderate(self, message, edit=None):
@@ -33,7 +36,7 @@ class NewModeration(commands.Cog):
         member = message.author
         if not isinstance(member, discord.Member):
             member = await message.guild.fetch_member(member.id)
-        if any(role.id in cfg.LV3_ROLE_IDS for role in member.roles):
+        if any(role.id!=message.guild.id and role.id in cfg.LV3_ROLE_IDS for role in member.roles):
             return
         # Save evidence before requesting deletion. Log failures must not disable moderation.
         evidence = self.bot.get_cog('NewMessageLog')
@@ -56,6 +59,9 @@ class NewModeration(commands.Cog):
             await db.audit(self.bot.user.id, 'lv3_link_deleted', details)
         except Exception:
             log.exception('Could not persist link moderation audit: %s', details)
+        # Keep deleting forbidden links, without turning spam into bot reply spam.
+        if not self.warning_users.allow(member.id) or not self.warning_budget.allow('warning'):
+            return
         try:
             await message.channel.send(
                 f'<@{member.id}> Only members with the LV3 role can post links. / 需要 LV3 身份组才能发送链接。',

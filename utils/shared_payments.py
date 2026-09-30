@@ -1,5 +1,5 @@
 """Account-wide durable claims. Unknown withdrawal results are NEVER resubmitted."""
-from decimal import Decimal, ROUND_DOWN, ROUND_UP
+from decimal import Decimal, InvalidOperation, ROUND_DOWN, ROUND_UP
 from datetime import datetime, timedelta
 import hashlib
 import secrets
@@ -18,13 +18,28 @@ class DepositNotReady(ValueError):
         super().__init__(f'匹配入款状态 {status!r}（{label}），保留订单，暂不允许发货或放款')
 
 def money(value):
-    result = Decimal(str(value))
+    try:
+        result = Decimal(str(value))
+    except InvalidOperation:
+        # Invalid public input is a validation failure, not a system exception.
+        # Never include the submitted value in logs or user-facing errors.
+        raise ValueError('金额格式无效，请输入有效数字') from None
     if not result.is_finite() or result <= 0 or result > Decimal('1000000'):
         raise ValueError('金额必须大于 0 且不超过 1,000,000 USDT')
     rounded=result.quantize(Decimal('0.000001'))
     if rounded<=0:
         raise ValueError('金额低于支持的精度')
     return rounded
+
+def trade_price(value):
+    """Validate the price text before six-decimal ledger rounding can hide digits."""
+    if (not isinstance(value,str) or len(value)>20
+            or not re.fullmatch(r'[0-9]+(?:\.[0-9]{1,2})?',value.strip())):
+        raise ValueError('商品金额格式无效，最多两位小数，例如 10.50')
+    result=money(value.strip())
+    if result<Decimal('5.01'):
+        raise ValueError('商品金额不能低于 5.01 USDT。')
+    return result
 
 def legacy_key(value):
     return f'legacy:{config.GUILD_ID}:{value}'
@@ -123,6 +138,9 @@ async def find_deposit(key, address, expected):
             continue
         if type(item.get('status')) is not int or item['status']!=1:
             raise DepositNotReady(item.get('status'))
+        received_at = item.get('insertTime')
+        if type(received_at) is not int or not start <= received_at <= end:
+            raise ValueError('匹配入款时间缺失或超出账单查询窗口，暂停自动处理')
         identity = item.get('id')
         txid = item.get('txId')
         if not identity or not txid:
@@ -139,7 +157,7 @@ async def find_deposit(key, address, expected):
             await cur.execute('INSERT INTO deposits(id,order_key,txid,amount,payload) VALUES(%s,%s,%s,%s,%s)',
                               (str(identity),key,txid,expected,db.encode(item)))
             deadline=int(locked['expires_at'].replace(tzinfo=__import__('datetime').timezone.utc).timestamp()*1000)
-            late=int(item.get('insertTime',0))>deadline
+            late=received_at>deadline
             await cur.execute("UPDATE invoices SET deposit_id=%s,state=%s WHERE order_key=%s", (str(identity),'received_late' if late else 'received',key))
             return None if late and key.startswith('legacy:') else txid
     return None
@@ -155,6 +173,11 @@ async def payout_amount_quote(gross):
     fee = Decimal(str(network['withdrawFee']))
     gross = money(gross)
     step = Decimal(str(network.get('withdrawIntegerMultiple') or '0.000001'))
+    minimum = Decimal(str(network['withdrawMin']))
+    maximum = Decimal(str(network['withdrawMax'])) if network.get('withdrawMax') is not None else None
+    if (not all(x.is_finite() for x in (fee, step, minimum)) or fee < 0 or step <= 0
+            or minimum < 0 or (maximum is not None and (not maximum.is_finite() or gross > maximum))):
+        raise ValueError('提现费率或限额异常，请管理员核对')
     net = ((gross-fee)/step).to_integral_value(rounding=ROUND_DOWN)*step
     if net < Decimal(str(network['withdrawMin'])) or net <= 0:
         minimum=((Decimal(str(network['withdrawMin']))/step).to_integral_value(rounding=ROUND_UP)*step+fee).quantize(Decimal('.01'),rounding=ROUND_UP)
@@ -166,7 +189,7 @@ async def withdrawal_network():
     data = await make_api_request('/sapi/v1/capital/config/getall','GET',{})
     coin = next((c for c in data or [] if c.get('coin')=='USDT'), None) if isinstance(data,list) else None
     network = next((n for n in coin.get('networkList',[]) if n.get('network')=='BSC'),None) if coin else None
-    if not network or not network.get('withdrawEnable'):
+    if not network or network.get('withdrawEnable') is not True or network.get('withdrawTag'):
         raise ValueError('无法确认提现费用或 BSC 提现暂不可用，请稍后重试')
     return network
 

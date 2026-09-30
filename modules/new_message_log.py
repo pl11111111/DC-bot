@@ -106,9 +106,10 @@ class NewMessageLog(commands.Cog):
                 # Leave room for edit/delete evidence; do not create new snapshots.
                 return
             now=datetime.utcnow()
-            await db.query('INSERT IGNORE INTO messages(message_id,channel_id,author_id,body,attachments,sent_at,updated_at,expires_at) VALUES(%s,%s,%s,%s,%s,%s,%s,%s)',
+            inserted=await db.query('INSERT IGNORE INTO messages(message_id,channel_id,author_id,body,attachments,sent_at,updated_at,expires_at) VALUES(%s,%s,%s,%s,%s,%s,%s,%s)',
                 (message.id,message.channel.id,message.author.id,message.content,db.encode(attachments(message.attachments)),naive(message.created_at),now,now+timedelta(days=30)))
-            self.bytes+=len(message.content.encode('utf-8'))+len(db.encode(attachments(message.attachments)).encode('utf-8'))+512
+            if inserted:
+                self.bytes+=len(message.content.encode('utf-8'))+len(db.encode(attachments(message.attachments)).encode('utf-8'))+512
 
     @commands.Cog.listener()
     async def on_raw_message_edit(self,payload):
