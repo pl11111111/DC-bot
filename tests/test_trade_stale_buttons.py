@@ -15,7 +15,7 @@ class StaleButtonTests(unittest.IsolatedAsyncioTestCase):
             inter=self.interaction();inter.user.id=actor;inter.channel_id=channel
             await cog.on_interaction(inter)
             cog.transition.assert_not_awaited();cog.prepare_invoice.assert_not_awaited()
-            self.assertIn('无权',inter.response.send_message.await_args.args[0])
+            self.assertIn('cannot perform',inter.response.send_message.await_args.args[0])
 
     def interaction(self):
         return NS(data={'custom_id':'new:trade:confirm:order'},guild=NS(id=2),channel_id=8,user=NS(id=2),

@@ -35,7 +35,7 @@ class TradeAccessTests(unittest.IsolatedAsyncioTestCase):
                 for field,value in zip(modal.children,['Item',low,'']): field._input_value=value
                 rejected=NS(user=buyer,response=NS(defer=AsyncMock()),followup=NS(send=AsyncMock()))
                 await modal.callback(rejected)
-                self.assertEqual(rejected.followup.send.await_args.args[0],'商品金额不能低于 5.01 USDT。')
+                self.assertEqual(rejected.followup.send.await_args.args[0],'Enter a valid amount with at most 2 decimals. Minimum: 5.01 USDT.')
                 self.assertEqual(calls,[])
                 guild.create_text_channel.assert_not_awaited()
             for field,value in zip(modal.children,['Item','5.01','']): field._input_value=value

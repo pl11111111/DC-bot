@@ -18,3 +18,18 @@ def label(action,row):
     index=ACTIONS.index(action)
     languages=list(dict.fromkeys(lang if lang in ROWS else 'English' for lang in row.get('_languages',['English'])))
     return ' / '.join(ROWS[lang][index] for lang in languages)
+
+def localize_references(value,language):
+    """Resolve button names from the same labels used to render the buttons."""
+    import re
+    if isinstance(value,dict): return {k:localize_references(v,language) for k,v in value.items()}
+    if isinstance(value,list): return [localize_references(v,language) for v in value]
+    if not isinstance(value,str): return value
+    aliases={'Get payment information':'pay','Payment details':'pay','Confirm trade':'confirm',
+        'Cancel trade':'cancel','Payment instructions':'payment_info','Contact admin':'payment_help',
+        'Mark as shipped':'ship','Confirm receipt':'receipt','Claim funds':'collect','Claim refund':'refund',
+        'Open dispute':'dispute','Keep channel / Contact admin':'keep','Keep channel':'keep'}
+    if language=='中文': value=value.replace('Get payment information（获取付款信息）','获取付款信息')
+    names={name.lower():action for name,action in aliases.items()}
+    pattern='|'.join(re.escape(name) for name in sorted(aliases,key=len,reverse=True))
+    return re.sub(pattern,lambda m:ROWS.get(language,ROWS['English'])[ACTIONS.index(names[m[0].lower()])],value,flags=re.IGNORECASE)

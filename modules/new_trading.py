@@ -17,6 +17,8 @@ cfg=config.NEW
 log=logging.getLogger(__name__)
 from utils.trade_states import TERMINAL, TERMINAL_SQL, AUTO_CLEANUP, IDLE_SECONDS
 from utils import trade_idle
+from utils.trade_private import text as private_text
+from utils import trade_private_ui as private_ui
 BANNER_DIR=Path(__file__).resolve().parents[1] / 'png'
 # Match the named workflow stage; creating an order renders only its first banner.
 STEP_BANNERS={
@@ -255,28 +257,29 @@ class NewTrading(commands.Cog):
 
     async def current_step(self,inter,row):
         """Recover UI without repeating a state change, invoice, or withdrawal."""
-        body=f"此按钮对应的步骤已结束。订单当前状态：{row['status']}。\n请使用下方当前步骤按钮。"
+        body=private_ui.text(inter.user,'current',status=row['status'])
         if row['status']=='paying':
             inv=await db.query('SELECT * FROM invoices WHERE order_key=%s',('new:'+row['id'],),shared=True,one=True)
             if inv:
-                body+=f"\n原账单到账金额：{inv['amount']} USDT\n网络：BSC / BEP20\n地址：{inv['address']}\n截止时间（UTC）：{inv['expires_at']}\n如已付款请勿重复转账；过期请联系管理员。"
+                body+='\n'+private_ui.text(inter.user,'invoice',amount=inv['amount'],address=inv['address'],deadline=inv['expires_at'])
         if inter.message:
             try: await trade_card.retire(inter.message)
             except discord.HTTPException: pass
-        await inter.followup.send(body,view=self.view(row),ephemeral=True,allowed_mentions=discord.AllowedMentions.none())
+        from utils.payout_language import language
+        await inter.followup.send(body,view=self.view(dict(row,_languages=[language(inter.user)])),ephemeral=True,allowed_mentions=discord.AllowedMentions.none())
 
     async def start(self,ctx,other,buy=True,source=None):
         guild=ctx.guild
         user=getattr(ctx,'user',None) or ctx.author
         if not guild or guild.id!=cfg.GUILD_ID or other.id==user.id or other.bot:
-            return await ctx.respond('请选择本社群的其他成员。',ephemeral=True) if hasattr(ctx,'respond') else await ctx.response.send_message('请选择本社群的其他成员。',ephemeral=True)
+            return await ctx.respond(private_ui.text(user,'member'),ephemeral=True) if hasattr(ctx,'respond') else await ctx.response.send_message(private_ui.text(user,'member'),ephemeral=True)
         if not cfg.PAYMENTS_ENABLED:
-            msg='共享支付账本尚未启用，请管理员完成迁移与检查后开放交易。'
+            msg=private_ui.text(user,'disabled')
             return await ctx.respond(msg,ephemeral=True) if hasattr(ctx,'respond') else await ctx.response.send_message(msg,ephemeral=True)
-        modal=discord.ui.Modal(title='担保交易条件')
-        item=discord.ui.InputText(label='商品名称及数量',max_length=150)
-        amount=discord.ui.InputText(label='商品价格 USDT（至少5.01，最多两位小数）',max_length=20)
-        terms=discord.ui.InputText(label='交付方式、期限及特别约定（选填）',style=discord.InputTextStyle.long,max_length=1500,required=False)
+        modal=discord.ui.Modal(title=private_ui.text(user,'form'))
+        item=discord.ui.InputText(label=private_ui.text(user,'item'),max_length=150)
+        amount=discord.ui.InputText(label=private_ui.text(user,'amount'),max_length=20)
+        terms=discord.ui.InputText(label=private_ui.text(user,'terms'),style=discord.InputTextStyle.long,max_length=1500,required=False)
         for field in (item,amount,terms): modal.add_item(field)
         async def submitted(inter):
             await inter.response.defer(ephemeral=True)
@@ -319,12 +322,12 @@ class NewTrading(commands.Cog):
                 await db.audit(user.id,'create',{'terms':terms.value,'source':source},ident)
                 await self.post(await self.order(ident))
                 # The durable notification worker retries participant mentions after failures.
-                await inter.followup.send(f'交易已创建：{channel.mention}',ephemeral=True)
+                await inter.followup.send(private_ui.text(inter.user,'created',channel=channel.mention),ephemeral=True)
             except ValueError as exc:
-                await inter.followup.send(str(exc),ephemeral=True)
+                await inter.followup.send(private_ui.error(inter.user,exc),ephemeral=True)
             except Exception:
                 log.exception('Create new order failed')
-                await inter.followup.send('建单失败，请联系管理员核对。',ephemeral=True)
+                await inter.followup.send(private_ui.text(inter.user,'error'),ephemeral=True)
         modal.callback=submitted
         if hasattr(ctx,'send_modal'): await ctx.send_modal(modal)
         else: await ctx.response.send_modal(modal)
@@ -415,14 +418,14 @@ class NewTrading(commands.Cog):
             buy=cfg.BUY_TAGS.get(thread.parent_id) in tags
             sell=cfg.SELL_TAGS.get(thread.parent_id) in tags
             if buy==sell or thread.locked or thread.archived:
-                return await inter.response.send_message('此贴文当前不支持发起交易。',ephemeral=True)
+                return await inter.response.send_message(private_ui.text(inter.user,'disabled'),ephemeral=True)
             owner=await inter.guild.fetch_member(thread.owner_id)
             return await self.start(inter,owner,buy=sell,source=thread.id)
         if not custom.startswith('new:trade:'): return
         _,_,action,ident=custom.split(':',3)
         row=await self.order(ident)
         if not row or inter.channel_id!=row['channel_id'] or inter.user.id not in (row['buyer_id'],row['seller_id']):
-            return await inter.response.send_message('无权操作此订单。',ephemeral=True)
+            return await inter.response.send_message(private_ui.text(inter.user,'denied'),ephemeral=True)
         valid={b.custom_id.split(':')[2] for b in self.view(row).children}
         if action not in valid:
             await inter.response.defer(ephemeral=True)
@@ -431,10 +434,11 @@ class NewTrading(commands.Cog):
             await inter.response.defer(ephemeral=True)
             invoice=await db.query('SELECT * FROM invoices WHERE order_key=%s',('new:'+ident,),shared=True,one=True)
             if not invoice or invoice['state']!='waiting' or time.time()>=trade_payment_ui.deadline(invoice):
-                return await inter.followup.send('账单已过期或付款已识别，请勿继续转账；已付款请联系管理员核对。',ephemeral=True)
+                return await inter.followup.send(private_ui.text(inter.user,'expired'),ephemeral=True)
             from utils import payment_guide
             guide_url=await payment_guide.url()
-            return await inter.followup.send(trade_payment_ui.payment_instructions(invoice,guide_url=guide_url),ephemeral=True,allowed_mentions=discord.AllowedMentions.none())
+            from utils.private_payment_help import render
+            return await inter.followup.send(render(inter.user,invoice,guide_url),ephemeral=True,allowed_mentions=discord.AllowedMentions.none())
         if action=='collect':
             payee=row['buyer_id'] if row['status']=='refund_ready' else row['seller_id']
             if inter.user.id!=payee or row['status'] not in ('receipt_confirmed','refund_ready'):
@@ -451,7 +455,7 @@ class NewTrading(commands.Cog):
                         raise OrderStateChanged('付款步骤已改变')
                     last=await db.setting('payment_help:'+ident)
                     if last and time.time()-last['time']<300:
-                        return await inter.followup.send('管理员已收到请求，频道已保留。请补充转账金额、交易哈希及付款截图，不要重复付款或补差额。',ephemeral=True)
+                        return await inter.followup.send(private_ui.text(inter.user,'help'),ephemeral=True)
                     async with db.transaction() as cur:
                         await cur.execute('SELECT status FROM orders WHERE id=%s FOR UPDATE',(ident,))
                         fresh=await cur.fetchone()
@@ -464,7 +468,7 @@ class NewTrading(commands.Cog):
                     await self.alert(f'付款问题请求：订单 {ident}\n申请人：<@{actor}>\n交易频道：<#{row["channel_id"]}>\n请核实实际到账金额、币种、网络和交易哈希。若需手动退款，请先核对是否已处理并保留凭证；不得仅凭截图退款。',notify_admins=True,fallback=inter.channel)
                     await db.setting('payment_help:'+ident,{'time':time.time(),'actor':actor})
                 await self.post(await self.order(ident),'已呼叫管理员，频道已保留。请提供实际转账金额、交易哈希和付款截图，等待核实；请勿自行补差额或重复支付。')
-                return await inter.followup.send('已呼叫管理员并暂停自动履约，频道不会因付款超时自动关闭。管理员将核对到账及是否需要手动退款。',ephemeral=True)
+                return await inter.followup.send(private_ui.text(inter.user,'help'),ephemeral=True)
             elif action=='keep':
                 if row['status'] not in (*TERMINAL,'payment_timeout','payment_review'): raise ValueError('当前步骤不支持保留频道')
                 async with self.cleanup_lock:
@@ -479,7 +483,7 @@ class NewTrading(commands.Cog):
                 await db.audit(actor,'retain_channel',{},ident)
                 await self.alert('用户请求保留交易频道：'+ident,notify_admins=True,fallback=inter.channel)
                 await self.post(await self.order(ident),'已取消自动关闭，频道已保留，等待管理员核实。')
-                return await inter.followup.send('已取消自动关闭并通知管理员，请说明保留原因；如已付款，请提供付款凭证。',ephemeral=True)
+                return await inter.followup.send(private_ui.text(inter.user,'hold'),ephemeral=True)
             elif action=='confirm':
                 if actor==row['initiator_id']: raise ValueError('请等待交易对方确认')
                 await self.transition(ident,'pending','confirmed',actor)
@@ -499,7 +503,7 @@ class NewTrading(commands.Cog):
                 # A durable intermediate state lets the worker recover failures.
                 await self.prepare_invoice(await self.order(ident))
                 # prepare_invoice already posts the payment banner and full instructions.
-                return await inter.followup.send('付款信息已生成，请查看交易频道。',ephemeral=True)
+                return await inter.followup.send(private_text(inter.user,'payment_ready'),ephemeral=True)
             elif action=='cancel':
                 if row['status'] not in ('pending','confirmed'): raise ValueError('已生成账单，不能直接取消；请联系管理员')
                 await self.transition(ident,row['status'],'cancelled',actor)
@@ -510,33 +514,33 @@ class NewTrading(commands.Cog):
                 if actor!=row['buyer_id']: raise ValueError('只有买家可以确认收货')
                 # Require a second explicit confirmation, bound to the buyer and order.
                 view=discord.ui.View(timeout=180)
-                button=discord.ui.Button(label='确认已收到商品，允许卖家收款',emoji='✅',style=discord.ButtonStyle.danger)
+                button=discord.ui.Button(label=private_ui.receipt_button(inter.user),emoji='✅',style=discord.ButtonStyle.danger)
                 async def confirm(click):
                     if click.user.id!=row['buyer_id']: return
                     await click.response.defer(ephemeral=True)
                     try:
                         await self.transition(ident,'shipped','receipt_confirmed',click.user.id)
                         await self.post(await self.order(ident))
-                        await click.followup.send('已确认收货。',ephemeral=True)
-                    except ValueError as exc: await click.followup.send(str(exc),ephemeral=True)
+                        await click.followup.send(private_text(click.user,'receipt_done'),ephemeral=True)
+                    except ValueError as exc: await click.followup.send(private_ui.error(click.user,exc),ephemeral=True)
                 button.callback=confirm
                 view.add_item(button)
-                return await inter.followup.send('请核对商品；确认后卖家可领取货款。',view=view,ephemeral=True)
+                return await inter.followup.send(private_ui.text(inter.user,'receipt'),view=view,ephemeral=True)
             elif action=='dispute':
                 if row['status'] not in ('paid','shipped'): raise ValueError('当前无法发起争议，请联系管理员')
                 await self.transition(ident,row['status'],'disputed',actor)
                 await self.alert('新社群订单发生争议：'+ident,notify_admins=True,fallback=inter.channel)
             else: return
             await self.post(await self.order(ident))
-            await inter.followup.send('操作完成。',ephemeral=True)
+            await inter.followup.send(private_text(inter.user,'done'),ephemeral=True)
         except OrderStateChanged:
             fresh=await self.order(ident)
             if fresh: await self.current_step(inter,fresh)
         except ValueError as exc:
-            await inter.followup.send(str(exc),ephemeral=True)
+            await inter.followup.send(private_ui.error(inter.user,exc),ephemeral=True)
         except Exception as exc:
             log.exception('New order operation failed')
-            await inter.followup.send(str(exc) if isinstance(exc,ValueError) else '操作未完成，请勿重复付款，联系管理员核对。',ephemeral=True)
+            await inter.followup.send(private_ui.error(inter.user,exc),ephemeral=True)
 
     async def prepare_invoice(self,row):
         # Recover the original invoice even after its deadline; never allocate a
@@ -1178,12 +1182,12 @@ class NewTrading(commands.Cog):
         async with self.cleanup_lock:
             row=await self.order(ident); state=await db.setting('manual_close:'+ident)
             if not row or row['status']!='manual_refunded' or inter.channel_id!=row['channel_id'] or inter.user.id!=row['buyer_id']:
-                return await inter.followup.send('仅本订单退款接收人（买家）可确认。',ephemeral=True)
+                return await inter.followup.send(private_ui.text(inter.user,'denied'),ephemeral=True)
             if not state or state['generation']!=generation or state['phase']!='waiting':
-                return await inter.followup.send('此关闭通知已处理或已失效，请查看最新通知。',ephemeral=True)
+                return await inter.followup.send(private_ui.text(inter.user,'stale'),ephemeral=True)
             state['phase']='accepted' if action=='accept' else 'held'
             await self.save_manual_close(row,state,action=='hold',inter.user.id,'manual_close_response',{'action':action,'generation':generation})
-        await inter.followup.send('已确认，即将关闭频道。' if action=='accept' else '已取消倒计时并保留频道，管理员将继续核实。',ephemeral=True)
+        await inter.followup.send(private_ui.text(inter.user,'close' if action=='accept' else 'hold'),ephemeral=True)
         if action=='accept': await self.manual_close_tick(ident)
         else: await self.alert('手动退款后用户仍有问题，已保留频道：'+ident,notify_admins=True,fallback=inter.channel)
 

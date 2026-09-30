@@ -43,20 +43,20 @@ class PaymentHelpTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(any("status='payment_review'" in call[0] for call in calls))
         self.assertTrue(any('hold=TRUE' in call[0] and call[1]==(8,9) for call in calls))
         self.assertTrue(cog.alert.await_args.kwargs['notify_admins'])
-        self.assertIn('暂停自动履约',inter.followup.send.await_args.args[0])
+        self.assertIn('automatic processing is paused',inter.followup.send.await_args.args[0])
 
     async def test_repeated_help_does_not_repeat_admin_ping(self):
         cog,inter=self.setup_case()
         with patch('modules.new_trading.db.setting',AsyncMock(return_value={'time':time.time()})):
             await cog.on_interaction(inter)
         cog.alert.assert_not_awaited()
-        self.assertIn('管理员已收到请求',inter.followup.send.await_args.args[0])
+        self.assertIn('Administrator notified',inter.followup.send.await_args.args[0])
 
     async def test_outsider_cannot_request_help(self):
         cog,inter=self.setup_case(actor=3)
         await cog.on_interaction(inter)
         cog.alert.assert_not_awaited()
-        self.assertIn('无权',inter.response.send_message.await_args.args[0])
+        self.assertIn('cannot perform',inter.response.send_message.await_args.args[0])
 
     async def test_step_mentions_target_correct_participants(self):
         cog=object.__new__(NewTrading)

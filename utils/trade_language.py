@@ -5,6 +5,8 @@ import discord
 import config
 
 PACKS=json.loads((Path(__file__).resolve().parent.parent/'config'/'trade_translations.json').read_text(encoding='utf-8'))
+from utils.trade_buttons import localize_references
+PACKS={language:localize_references(pack,language) for language,pack in PACKS.items()}
 ALIASES={'payment_timeout':'review','payment_review':'review','disputed':'review',
          'releasing_refund':'releasing','expired':'cancelled','manual_refunded':'refunded','test_closed':'review'}
 BUTTONS={'confirm':'Confirm trade','cancel':'Cancel trade','pay':'Get payment information',
@@ -79,6 +81,9 @@ def localize_embed(embed,row):
         if field.name=='付款截止': value=value.split('\n\n')[0]
         emojis={1:'📦',2:'💰',3:'🔒',4:'🎟️',5:'💵',6:'💰',7:'🛒',8:'📦',9:'📝',10:'🕒',11:'📌',12:'💰',13:'📍',14:'⏳'}
         field_id=labels.get(field.name)
+        if field_id==11:
+            from utils.trade_extra import render
+            value=render(value,row['_languages'])
         result.set_field_at(index,name=emojis[field_id]+' '+label(field_id) if field_id else field.name,value=value,inline=field.inline)
     result.set_footer(text=label(15)+' '+row['id'])
     return result
