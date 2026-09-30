@@ -16,7 +16,8 @@ def layout(title,body,banner='',view=None,intro='',attachment_banner=False,butto
         if not banner.startswith('https://') and not (attachment_banner and banner.startswith('attachment://')): raise ValueError('横幅请使用 HTTPS 图片链接')
         children.append({'type':12,'items':[{'media':{'url':banner}}]})
     if text: children.append({'type':10,'content':text})
-    external_buttons=buttons_below or bool(view and any(getattr(button,'custom_id',None)=='new:verify' for button in view.children))
+    external_buttons=buttons_below or bool(view and any(getattr(button,'custom_id',None) in
+        ('new:verify','new:translate','new:article_translate','new:long_translate') for button in view.children))
     if view and view.children and not external_buttons: children.extend(view.to_components())
     result=[{'type':17,'accent_color':0x9854DE,'components':children}]
     if external_buttons: result.extend(view.to_components())

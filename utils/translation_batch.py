@@ -10,10 +10,10 @@ from utils.translation_editor import authorized, ensure_button
 from utils.verification_text import ROWS
 
 log=logging.getLogger(__name__)
-MAX_BYTES=256*1024
+MAX_BYTES=2*1024*1024
 
 def decode(data,source,message_id):
-    if len(data)>MAX_BYTES: raise ValueError('翻译文件不能超过 256 KB。')
+    if len(data)>MAX_BYTES: raise ValueError('翻译文件不能超过 2 MB。')
     def unique(pairs):
         result={}
         for key,value in pairs:
@@ -33,7 +33,7 @@ def decode(data,source,message_id):
     for language,content in translations.items():
         if language not in ROWS or language=='English': raise ValueError(f'不支持的译文语言：{language}')
         if not isinstance(content,dict): raise ValueError(f'{language} 译文格式不正确。')
-        for field,limit in [('title',200),('body',3500)]:
+        for field,limit in [('title',200),('body',30000 if len(source['body'])>3500 else 3500)]:
             value=content.get(field)
             if not isinstance(value,str) or not value.strip() or len(value)>limit:
                 raise ValueError(f'{language} 的 {field} 必须填写，最多 {limit} 字。')
@@ -57,7 +57,7 @@ async def run(cog,ctx,message_link,file=None):
             data=json.dumps(bundle,ensure_ascii=False,indent=2).encode('utf-8')
             return await ctx.followup.send('原文及现有有效译文已导出。把文件交给我补全翻译，再用同一指令上传；未翻译的语言请从文件中删除。',
                 file=discord.File(io.BytesIO(data),filename=f'translations-{message_id}.json'),ephemeral=True)
-        if file.size>MAX_BYTES: raise ValueError('翻译文件不能超过 256 KB。')
+        if file.size>MAX_BYTES: raise ValueError('翻译文件不能超过 2 MB。')
         translations=decode(await file.read(),source,message_id)
         revisions={}
         lines=[]

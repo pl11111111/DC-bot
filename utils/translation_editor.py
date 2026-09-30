@@ -23,8 +23,8 @@ async def ensure_button(message,bot_id):
     import json
     components=raw.get('components',[])
     serialized=json.dumps(components)
-    changed=articles.style_translation_buttons(components)
-    if 'new:translate' in serialized or 'new:article_translate' in serialized:
+    changed=articles.normalize_translation_buttons(components)
+    if 'new:translate' in serialized or 'new:article_translate' in serialized or 'new:long_translate' in serialized:
         if not changed: return
     else:
         if len(components)>=5: raise ValueError('消息按钮已满，请管理员调整原消息布局。')
@@ -42,6 +42,8 @@ async def open_editor(cog,ctx,message_link,language):
         message=channel.get_partial_message(message_id)
         source=await articles.read(message,cog.bot.user.id)
         previous=await store.lookup(message_id,language)
+        if len(source['body'])>3500 or (previous and len(previous['body'])>3500):
+            return await ctx.followup.send('长篇文章请使用 /new_translation_batch 导出和导入完整译文，编辑窗口无法容纳全文。',ephemeral=True)
         if previous:
             initial={'title':previous['title'],'body':previous['body']}
         else:

@@ -252,11 +252,11 @@ class NewCommunity(commands.Cog):
         if not interaction.guild or interaction.guild.id!=cfg.GUILD_ID:
             return
         custom=(interaction.data or {}).get('custom_id','')
-        if custom not in ('new:verify','new:translate','new:article_translate','new:invites','new:invite_link') and not custom.startswith('new:lang:'):
+        if custom not in ('new:verify','new:translate','new:article_translate','new:long_translate','new:invites','new:invite_link') and not custom.startswith('new:lang:'):
             return
         await interaction.response.defer(ephemeral=True)
         try:
-            if custom=='new:article_translate':
+            if custom in ('new:article_translate','new:long_translate'):
                 from utils.article_translation import start
                 return await start(self,interaction)
             if custom in ('new:verify','new:translate'):
@@ -306,6 +306,13 @@ class NewCommunity(commands.Cog):
         except Exception as exc:
             log.exception('New community interaction failed')
             await interaction.followup.send(str(exc) if isinstance(exc,ValueError) else '操作失败，请联系管理员检查权限或服务状态。',ephemeral=True)
+
+    @discord.slash_command(name='new_notice_file',description='上传 Markdown/TXT 完整发布长文，自动分段并支持整篇翻译')
+    async def notice_file(self,ctx,channel:discord.abc.GuildChannel,title:str,file:discord.Attachment,tags:str=''):
+        if not ctx.guild or ctx.guild.id!=cfg.GUILD_ID or not admin(ctx.author,cfg.NOTICE_ADMIN_ROLES):
+            return await ctx.respond('没有操作权限。',ephemeral=True)
+        from utils.long_article import editor
+        await editor(self,ctx,channel,title,file,tags)
 
     @discord.slash_command(name='new_translation_batch',description='导出原文，或上传 JSON 一次导入多种语言译文（仅管理员）')
     async def translation_batch(self,ctx,message_link:str,file:discord.Attachment=None):
