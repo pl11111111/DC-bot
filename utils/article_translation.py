@@ -4,6 +4,7 @@ from discord.http import Route
 from utils import verification_flow as vf
 from utils.verification_text import text
 from utils import translation_store
+from utils import community_private as cp
 
 def style_translation_buttons(components):
     changed=False
@@ -96,8 +97,8 @@ async def start(cog,inter):
     page=0
     pages=[]
     selected=language
-    previous=discord.ui.Button(label='Previous',emoji='⬅️')
-    following=discord.ui.Button(label='Next',emoji='➡️')
+    previous=discord.ui.Button(label=text(language)['back'],emoji='⬅️')
+    following=discord.ui.Button(label=text(language)['next'],emoji='➡️')
     import asyncio
     lock=asyncio.Lock()
     async def render(article,lang):
@@ -109,11 +110,13 @@ async def start(cog,inter):
         page=min(page,max(0,len(pages)-1))
         previous.disabled=page==0
         following.disabled=page>=len(pages)-1
+        previous.label=text(lang)['back']
+        following.label=text(lang)['next']
         return [discord.Embed(title=translated['title'] or None,description=pages[page],color=0x9854DE).set_footer(text=f'{lang} · {page+1}/{len(pages)}')]
     async def update(click,delta=None):
         nonlocal page,selected
         if not click.guild or click.guild.id!=vf.cfg.GUILD_ID or click.user.id!=inter.user.id:
-            return await click.response.send_message('This translation menu belongs to another user.',ephemeral=True)
+            return await click.response.send_message(cp.for_member(click.user,'owner'),ephemeral=True)
         await click.response.defer()
         async with lock:
             try:
@@ -123,7 +126,7 @@ async def start(cog,inter):
                 current=await read(inter.message,cog.bot.user.id)
                 await click.edit_original_response(embeds=await render(current,selected),view=view,allowed_mentions=discord.AllowedMentions.none())
             except Exception:
-                await click.followup.send('Unable to load the current article. Please reopen Translate.',ephemeral=True)
+                await click.followup.send(cp.text(selected,'error'),ephemeral=True)
     async def choose(click): await update(click)
     async def back(click): await update(click,-1)
     async def forward(click): await update(click,1)

@@ -37,5 +37,5 @@ def render(source,languages):
             content=ROWS[lang][kind].format(button=label('keep',{'status':'payment_timeout','_languages':[lang]}))
         else:
             content=trade_private_ui.ROWS[lang][trade_private_ui.KEYS.index(kind)]
-        sections.append(f'**{lang}**\n{content}')
+        sections.append(content)
     return '\n\n'.join(sections)

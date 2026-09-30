@@ -33,7 +33,7 @@ def instruction(status,language):
 def description(row,status=None):
     if (status or row['status'])=='pending': return pending_notice(row)
     if row.get('_user_languages'): return participant_notice(row,status)
-    return '\n\n'.join(f'🌐 **{language}**\n{instruction(status or row["status"],language)}' for language in row['_languages'])
+    return '\n\n'.join(instruction(status or row['status'],language) for language in dict.fromkeys(row['_languages']))
 
 def participant_notice(row,status=None):
     status=status or row['status']
@@ -41,7 +41,7 @@ def participant_notice(row,status=None):
     for language in row['_languages']:
         pack=PACKS[language]
         specific=pack.get('participants',{}).get(status,{})
-        lines=[f'🌐 **{language}**']
+        lines=[]
         for key,lang in row['_user_languages'].items():
             if lang!=language: continue
             buyer=key=='buyer_id'
@@ -54,7 +54,7 @@ def participant_notice(row,status=None):
 def pending_notice(row):
     sections=[]
     for language in row['_languages']:
-        lines=[f'🌐 **{language}**']
+        lines=[]
         for key,lang in row['_user_languages'].items():
             if lang!=language: continue
             sender=row[key]==row.get('initiator_id',row['buyer_id'])

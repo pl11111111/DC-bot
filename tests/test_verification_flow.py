@@ -7,6 +7,36 @@ from unittest.mock import AsyncMock,patch
 from utils import verification_flow as f
 
 class VerificationTests(unittest.IsolatedAsyncioTestCase):
+    async def test_existing_level_does_not_receive_lv1_again(self):
+        from contextlib import ExitStack
+        with ExitStack() as stack:
+            for setting,rid in [('VERIFIED_ROLE_ID',9),('LV2_ROLE_ID',20),('LV3_ROLE_ID',30),('LV4_ROLE_ID',40),('LV5_ROLE_ID',50)]:
+                stack.enter_context(patch.object(f.cfg,setting,rid))
+            stack.enter_context(patch.object(f.cfg,'LANGUAGES',{}))
+            audit=stack.enter_context(patch.object(f.db,'audit',AsyncMock()))
+            safe=stack.enter_context(patch('modules.new_community.safe_self_role',return_value=True))
+            for role_id in (9,20,30,40,50):
+                member=NS(roles=[NS(id=role_id)],add_roles=AsyncMock(),remove_roles=AsyncMock())
+                guild=NS(me=NS(guild_permissions=NS(manage_roles=True)),fetch_member=AsyncMock(return_value=member),get_role=lambda rid:NS(id=rid))
+                view=f.VerificationView(self.cog,self.inter,self.original,'English')
+                view.stage='rules'
+                await view.agree(NS(guild=guild))
+                member.add_roles.assert_not_awaited()
+                member.remove_roles.assert_not_awaited()
+                self.assertTrue(view.done)
+                self.assertFalse(audit.call_args.args[2]['lv1_granted'])
+                self.assertEqual(audit.call_args.args[2]['retained_level_roles'],[role_id])
+
+    async def test_language_change_preserves_advanced_level(self):
+        member=NS(roles=[NS(id=20),NS(id=13)],add_roles=AsyncMock(),remove_roles=AsyncMock())
+        guild=NS(me=NS(guild_permissions=NS(manage_roles=True)),fetch_member=AsyncMock(return_value=member),get_role=lambda rid:NS(id=rid))
+        with patch.object(f.cfg,'LV2_ROLE_ID',20),patch.object(f.cfg,'VERIFIED_ROLE_ID',9),patch.object(f.cfg,'LANGUAGES',{'中文':12,'日本語':13}),patch.object(f.db,'audit',AsyncMock()),patch('modules.new_community.safe_self_role',return_value=True):
+            view=f.VerificationView(self.cog,self.inter,self.original,'中文')
+            view.stage='rules'
+            await view.agree(NS(guild=guild))
+        self.assertEqual([c.args[0].id for c in member.add_roles.call_args_list],[12])
+        self.assertEqual([c.args[0].id for c in member.remove_roles.call_args_list],[13])
+
     async def test_public_translate_uses_click_locale_without_language_role(self):
         self.inter.followup=NS(send=AsyncMock())
         with patch.object(f,'source',AsyncMock(return_value=self.original)),patch.object(f.cfg,'LANGUAGES',{}),patch.object(f.VerificationView,'refresh_translation',AsyncMock()),patch.object(f.db,'setting',AsyncMock(return_value='English')) as saved:

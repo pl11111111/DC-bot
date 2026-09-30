@@ -6,6 +6,7 @@ import discord
 import config
 from utils import new_store as db
 from utils.verification_text import text, ROWS
+from utils import community_private as cp
 
 cfg=config.NEW
 LOCALES={'zh':'中文','id':'Bahasa Indonesia','ja':'日本語','ko':'한국어',
@@ -119,7 +120,7 @@ class VerificationView(discord.ui.View):
     def control(self,item,action):
         async def callback(inter):
             if not inter.guild or inter.guild.id!=cfg.GUILD_ID or inter.user.id!=self.owner:
-                return await inter.response.send_message('Only the user who opened this verification can use it.',ephemeral=True)
+                return await inter.response.send_message(cp.text(client_language(getattr(inter,'locale',None)),'owner'),ephemeral=True)
             await inter.response.defer()
             async with self.lock:
                 try:
@@ -136,7 +137,7 @@ class VerificationView(discord.ui.View):
                     logger=logging.getLogger(__name__)
                     if isinstance(exc,ValueError): logger.warning('Verification blocked: user=%s reason=%s',self.owner,exc)
                     else: logger.exception('Verification interaction failed')
-                    await inter.followup.send(str(exc) if isinstance(exc,ValueError) else 'Unable to complete verification. Please retry or contact an administrator.',ephemeral=True)
+                    await inter.followup.send(cp.text(self.ui_language,'stale' if str(exc).startswith('The rules have changed.') else 'error'),ephemeral=True)
         item.callback=callback
         self.add_item(item)
 
@@ -162,25 +163,27 @@ class VerificationView(discord.ui.View):
         async with self.cog.role_locks.setdefault(self.owner,asyncio.Lock()):
             member=await inter.guild.fetch_member(self.owner)
             verified=inter.guild.get_role(cfg.VERIFIED_ROLE_ID)
+            existing_levels={r.id for r in member.roles}&cfg.level_role_ids()
+            needs_lv1=not existing_levels
             target_id=cfg.LANGUAGES.get(self.language) if self.language!='English' else None
             target=inter.guild.get_role(target_id) if target_id else None
             if not inter.guild.me or not inter.guild.me.guild_permissions.manage_roles:
                 raise ValueError('The bot needs Manage Roles permission. Please contact an administrator.')
-            if not safe_self_role(verified,inter.guild): raise ValueError(role_error(verified,inter.guild,'NEW_INVITE_VERIFIED_ROLE_ID'))
-            if self.language!='English' and (not safe_self_role(target,inter.guild) or target.id==verified.id):
-                raise ValueError(role_error(target,inter.guild,'language role') if not target or target.id!=verified.id else 'Language role must differ from verification role.')
-            old=[r for r in member.roles if r.id in set(cfg.LANGUAGES.values()) and r.id!=cfg.VERIFIED_ROLE_ID and (not target or r.id!=target.id)]
+            if needs_lv1 and not safe_self_role(verified,inter.guild): raise ValueError(role_error(verified,inter.guild,'NEW_INVITE_VERIFIED_ROLE_ID'))
+            if self.language!='English' and (not safe_self_role(target,inter.guild) or target.id in cfg.level_role_ids()):
+                raise ValueError(role_error(target,inter.guild,'language role') if not target or target.id not in cfg.level_role_ids() else 'Language roles must differ from LV1–LV5 roles.')
+            old=[r for r in member.roles if r.id in set(cfg.LANGUAGES.values()) and r.id not in cfg.level_role_ids() and (not target or r.id!=target.id)]
             if old: await member.remove_roles(*old,reason='Verification language selection')
             try:
                 if target: await member.add_roles(target,reason='Verification language selection')
-                await member.add_roles(verified,reason='Accepted current community rules')
+                if needs_lv1: await member.add_roles(verified,reason='Accepted current community rules')
             except Exception:
                 if target and all(r.id!=target.id for r in member.roles):
                     await member.remove_roles(target,reason='Rollback failed verification language')
                 if old: await member.add_roles(*old,reason='Restore language after failed verification')
                 raise
             await self.cog.verify_count(self.owner)
-            await db.audit(self.owner,'verified',{'role':verified.id,'language':self.language,'rules':self.original})
+            await db.audit(self.owner,'verified',{'role':cfg.VERIFIED_ROLE_ID,'lv1_granted':needs_lv1,'retained_level_roles':sorted(existing_levels),'language':self.language,'rules':self.original})
             self.done=True
 
 async def start(cog,inter,translate=False):

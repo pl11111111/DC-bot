@@ -21,7 +21,7 @@ class MultilingualTests(unittest.IsolatedAsyncioTestCase):
                     message,_=t.notify(row)
                     self.assertIn('<@1>：'+roles['buyer'],message)
                     self.assertIn('<@2>：'+roles['seller'],message)
-                    self.assertEqual(message.count(f'**{language}**'),1)
+                    self.assertNotIn(f'**{language}**',message)
                     self.assertEqual(message.count('<@1>'),1)
                     self.assertEqual(message.count('<@2>'),1)
         confirmed=t.PACKS['English']['participants']['confirmed']

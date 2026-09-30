@@ -21,5 +21,5 @@ class ExtraTests(unittest.TestCase):
             for first,second in itertools.product(extra.ROWS,repeat=2):
                 result=extra.render(source,[first,second])
                 self.assertLessEqual(len(result.encode('utf-16-le'))//2,1024)
-                self.assertEqual(result.count('**'+first+'**'),1)
+                self.assertNotIn('**'+first+'**',result)
         self.assertEqual(extra.render('管理员自定义理由 123',['日本語','English']),'管理员自定义理由 123')

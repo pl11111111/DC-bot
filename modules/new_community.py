@@ -11,6 +11,7 @@ from utils import new_store as db, notice_card
 cfg = config.NEW
 log = logging.getLogger(__name__)
 
+
 def texts():
     return json.loads((Path(__file__).resolve().parent.parent/'config'/'new_content.json').read_text(encoding='utf-8'))
 
@@ -181,8 +182,8 @@ class NewCommunity(commands.Cog):
                     await self.save_panel(channel_id,kind,panel['title'],panel['body'],
                         buttons([('Verify','verify'),('Translate','translate')]) if kind=='verify' else None,banner=panel.get('banner'))
             await self.save_panel(cfg.LANGUAGE_CHANNEL_ID,'language','Choose your language',
-                'English is the default. You may select one additional language, or none.\nEnglish 为默认语言，可额外选择一种语言，也可以不选。',
-                buttons([(name,'lang:'+str(role)) for name,role in cfg.LANGUAGES.items() if role]+[('清除额外语言','lang:clear')]))
+                'Click a button below.',
+                buttons([(name,'lang:'+str(role)) for name,role in cfg.LANGUAGES.items() if role]+[('Clear additional language','lang:clear')]))
             # Reconcile missed role events using recorded invitations, not new attribution.
             if cfg.VERIFIED_ROLE_ID:
                 rows=await db.query('SELECT user_id FROM invitations WHERE verified=FALSE AND inviter_id IS NOT NULL')
@@ -255,6 +256,11 @@ class NewCommunity(commands.Cog):
         if custom not in ('new:verify','new:translate','new:article_translate','new:long_translate','new:invites','new:invite_link') and not custom.startswith('new:lang:'):
             return
         await interaction.response.defer(ephemeral=True)
+        from utils import community_private as cp
+        reply_language=cp.language(interaction.user)
+        if custom in ('new:verify','new:translate'):
+            from utils.verification_flow import client_language
+            reply_language=client_language(getattr(interaction,'locale',None))
         try:
             if custom in ('new:article_translate','new:long_translate'):
                 from utils.article_translation import start
@@ -269,11 +275,12 @@ class NewCommunity(commands.Cog):
                 allowed={r for r in cfg.LANGUAGES.values() if r}
                 if requested!='clear' and int(requested) not in allowed:
                     raise ValueError('未知语言身份组')
+                reply_language='English' if requested=='clear' else next(name for name,rid in cfg.LANGUAGES.items() if rid==int(requested))
                 async with self.role_locks.setdefault(interaction.user.id,asyncio.Lock()):
                     member=await interaction.guild.fetch_member(interaction.user.id)
-                    old=[r for r in member.roles if r.id in allowed]
+                    old=[r for r in member.roles if r.id in allowed and r.id not in cfg.level_role_ids()]
                     target=interaction.guild.get_role(int(requested)) if requested!='clear' else None
-                    if requested!='clear' and (not safe_self_role(target,interaction.guild) or target.id==cfg.VERIFIED_ROLE_ID):
+                    if requested!='clear' and (not safe_self_role(target,interaction.guild) or target.id in cfg.level_role_ids()):
                         raise ValueError('语言身份组配置或层级不正确')
                     if old:
                         await member.remove_roles(*old,reason='Change optional language')
@@ -285,10 +292,11 @@ class NewCommunity(commands.Cog):
                             await member.add_roles(*old,reason='Restore language after failed change')
                         raise
                     await db.audit(member.id,'language',{'role':target.id if target else None})
-                reply='语言身份组已更新。'
+                await db.setting('verify_language:'+str(interaction.user.id),reply_language)
+                reply=cp.text(reply_language,'updated')
             elif custom=='new:invites':
                 row=await db.query('SELECT COUNT(*) AS total,COALESCE(SUM(verified),0) AS verified FROM invitations WHERE inviter_id=%s',(interaction.user.id,),one=True)
-                reply=f"累计邀请：{row['total']}；有效邀请：{row['verified']}。"
+                reply=cp.text(reply_language,'counts',total=row['total'],verified=row['verified'] or 0)
             else:
                 channel=await self.channel(cfg.INVITE_CHANNEL_ID)
                 async with self.invite_lock:
@@ -305,7 +313,8 @@ class NewCommunity(commands.Cog):
             await interaction.followup.send(reply,ephemeral=True)
         except Exception as exc:
             log.exception('New community interaction failed')
-            await interaction.followup.send(str(exc) if isinstance(exc,ValueError) else '操作失败，请联系管理员检查权限或服务状态。',ephemeral=True)
+            key={'请在语言频道操作':'channel','未知语言身份组':'role','语言身份组配置或层级不正确':'role'}.get(str(exc),'error')
+            await interaction.followup.send(cp.text(reply_language,key),ephemeral=True)
 
     @discord.slash_command(name='new_guide',description='指定现有指南、停止旧指南自动发布或查看状态（管理员）')
     async def guide_control(self,ctx,action:discord.Option(str,choices=['指定新指南','停止自动发布','查看状态']),message_link:str=''):
