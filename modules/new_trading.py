@@ -104,8 +104,8 @@ class NewTrading(commands.Cog):
             'test_closed':[('保留频道并通知管理员','keep')],
         }.get(row['status'],[])
         if row.get('_languages'):
-            from utils.trade_language import BUTTONS
-            options=[(BUTTONS.get(action,label),action) for label,action in options]
+            from utils.trade_buttons import label as button_label
+            options=[(button_label(action,row),action) for _,action in options]
         return buttons([(label,'trade:'+action+':'+ident) for label,action in options])
 
     async def send_step(self,channel,status,embed=None,view=None,qr_file=None):
@@ -438,7 +438,8 @@ class NewTrading(commands.Cog):
         if action=='collect':
             payee=row['buyer_id'] if row['status']=='refund_ready' else row['seller_id']
             if inter.user.id!=payee or row['status'] not in ('receipt_confirmed','refund_ready'):
-                return await inter.response.send_message('当前不能领取货款。',ephemeral=True)
+                from utils.payout_language import texts
+                return await inter.response.send_message(texts(inter.user)['stale'],ephemeral=True)
             return await self.address_modal(inter,row)
         await inter.response.defer(ephemeral=True)
         try:
@@ -577,6 +578,8 @@ class NewTrading(commands.Cog):
 
     async def payout_progress(self,inter,ident):
         """Read-only recovery for a stale confirmation; never submit again."""
+        from utils import payout_language as pl
+        ui=pl.texts(inter.user)
         fresh=await self.order(ident)
         payout=await db.query('SELECT state FROM payouts WHERE order_key=%s',('new:'+ident,),shared=True,one=True)
         state=payout['state'] if payout else None
@@ -592,26 +595,34 @@ class NewTrading(commands.Cog):
         else:
             text='订单状态已改变，这个收款确认已失效，请使用最新交易消息。'
         await self.retire_payout_confirmation(inter)
+        if pl.language(inter.user)!='中文':
+            from utils.trade_language import instruction
+            text=(ui['review'] if state in ('unknown','failed','review') or status=='test_closed' else
+                  instruction(status,pl.language(inter.user)) if status in ('completed','refunded','releasing','releasing_refund') else ui['stale'])
         await inter.followup.send(text,ephemeral=True)
 
     async def address_modal(self,inter,row):
+        from utils import payout_language as pl
+        ui=pl.texts(inter.user)
         refund=row['status']=='refund_ready'
         payee=row['buyer_id'] if refund else row['seller_id']
         gross=row['amount']
         if refund:
             deposit=await db.query('SELECT amount FROM deposits WHERE order_key=%s',('new:'+row['id'],),shared=True,one=True)
             if not deposit:
-                return await inter.response.send_message('没有已核对的到账流水，不能退款。',ephemeral=True)
+                return await inter.response.send_message(ui['review'],ephemeral=True)
             gross=deposit['amount']
-        modal=discord.ui.Modal(title='退款地址' if refund else '卖家收款地址')
-        address=discord.ui.InputText(label='USDT-BEP20 地址',min_length=42,max_length=42)
+        modal=discord.ui.Modal(title=ui['refund_title'] if refund else ui['title'])
+        address=discord.ui.InputText(label=ui['address'],min_length=42,max_length=42)
         modal.add_item(address)
         async def submitted(click):
+            if click.user.id!=payee: return
             await click.response.defer(ephemeral=True)
+            ui=pl.texts(click.user)
             try:
                 fee,net=await payments.payout_quote(address.value.strip(),gross)
                 view=discord.ui.View(timeout=180)
-                button=discord.ui.Button(label='确认地址与预计费用，申请放款',emoji='💰',style=discord.ButtonStyle.danger)
+                button=discord.ui.Button(label=ui['confirm'],emoji='💰',style=discord.ButtonStyle.danger)
                 async def accepted(confirm):
                     if confirm.user.id!=payee: return
                     await confirm.response.defer(ephemeral=True)
@@ -625,23 +636,25 @@ class NewTrading(commands.Cog):
                         await self.retire_payout_confirmation(confirm)
                         await db.query('UPDATE orders SET address=%s WHERE id=%s',(address.value.strip(),row['id']))
                         await payments.release('new:'+row['id'],address.value.strip(),gross,fee,net)
-                        await confirm.followup.send('提现已提交或结果待核对。请勿重复操作，确认最终结果后会更新订单。',ephemeral=True)
+                        from utils.trade_language import instruction
+                        await confirm.followup.send(instruction('releasing',pl.language(confirm.user)),ephemeral=True)
                         try: await self.post(await self.order(row['id']))
                         except Exception: log.exception('Could not refresh payout progress card: %s',row['id'])
                     except OrderStateChanged:
                         await self.payout_progress(confirm,row['id'])
                     except ValueError as exc:
-                        await confirm.followup.send(str(exc),ephemeral=True)
+                        log.warning('Payout blocked: order=%s reason=%s',row['id'],exc)
+                        await confirm.followup.send(pl.error(confirm.user,exc),ephemeral=True)
                     except Exception:
                         log.exception('Payout request failed')
-                        await confirm.followup.send('放款结果待核对，请联系管理员，勿重复提现。',ephemeral=True)
+                        await confirm.followup.send(pl.texts(confirm.user)['review'],ephemeral=True)
                 button.callback=accepted
                 view.add_item(button)
-                summary=(f'退款总额（含已付服务费）：{gross} U\n网络费从退款中扣除，由退款领取方承担。'
-                         if refund else f'放款总额：{gross} U\n网络费从卖家货款中扣除。')
-                await click.followup.send(f'地址：{address.value}\n{summary}\n预计网络费：{fee} U\n预计到账：{net} U\n金额精度舍入差额：{gross-fee-net} U\n内部转账是否免手续费以实际渠道结果为准。',view=view,ephemeral=True)
+                summary=ui['summary'].format(address=address.value,gross=gross,fee=fee,net=net,rounding=gross-fee-net)
+                await click.followup.send(summary+'\n'+ui['refund_note' if refund else 'seller_note'],view=view,ephemeral=True)
             except Exception as exc:
-                await click.followup.send(str(exc) if isinstance(exc,ValueError) else '暂时无法获取提现报价。',ephemeral=True)
+                log.warning('Payout quote unavailable: order=%s reason=%s',row['id'],exc)
+                await click.followup.send(pl.error(click.user,exc,quote=True),ephemeral=True)
         modal.callback=submitted
         await inter.response.send_modal(modal)
 
