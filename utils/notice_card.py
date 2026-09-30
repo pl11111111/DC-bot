@@ -18,9 +18,16 @@ def layout(title,body,banner='',view=None,intro='',attachment_banner=False,butto
     if text: children.append({'type':10,'content':text})
     external_buttons=buttons_below or bool(view and any(getattr(button,'custom_id',None) in
         ('new:verify','new:translate','new:article_translate','new:long_translate') for button in view.children))
-    if view and view.children and not external_buttons: children.extend(view.to_components())
+    below=[]
+    if view and view.children and not external_buttons:
+        for row in view.to_components():
+            inside=[item for item in row['components'] if item.get('custom_id')!='new:lang:clear']
+            outside=[item for item in row['components'] if item.get('custom_id')=='new:lang:clear']
+            if inside: children.append(dict(row,components=inside))
+            if outside: below.append(dict(row,components=outside))
     result=[{'type':17,'accent_color':0x9854DE,'components':children}]
     if external_buttons: result.extend(view.to_components())
+    result.extend(below)
     return result
 
 

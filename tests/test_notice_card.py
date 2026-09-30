@@ -9,6 +9,13 @@ from modules.new_community import NewCommunity,buttons
 
 
 class NoticeCardTests(unittest.IsolatedAsyncioTestCase):
+    async def test_language_choices_inside_and_clear_below(self):
+        view=buttons([('English','lang:english'),('中文','lang:123'),('Clear additional language','lang:clear')])
+        result=notice_card.layout('Choose your language','Click a button below.',view=view)
+        self.assertEqual([x['type'] for x in result],[17,1])
+        self.assertEqual([x['custom_id'] for x in result[0]['components'][1]['components']],['new:lang:english','new:lang:123'])
+        self.assertEqual([x['custom_id'] for x in result[1]['components']],['new:lang:clear'])
+
     async def test_banner_body_and_buttons_share_container(self):
         view=buttons([('Publish','publish')])
         layout=notice_card.layout('Rules','Body','https://example.com/banner.png',view)

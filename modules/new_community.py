@@ -183,7 +183,7 @@ class NewCommunity(commands.Cog):
                         buttons([('Verify','verify'),('Translate','translate')]) if kind=='verify' else None,banner=panel.get('banner'))
             await self.save_panel(cfg.LANGUAGE_CHANNEL_ID,'language','Choose your language',
                 'Click a button below.',
-                buttons([(name,'lang:'+str(role)) for name,role in cfg.LANGUAGES.items() if role]+[('Clear additional language','lang:clear')]))
+                buttons([('English','lang:english')]+[(name,'lang:'+str(role)) for name,role in cfg.LANGUAGES.items() if role]))
             # Reconcile missed role events using recorded invitations, not new attribution.
             if cfg.VERIFIED_ROLE_ID:
                 rows=await db.query('SELECT user_id FROM invitations WHERE verified=FALSE AND inviter_id IS NOT NULL')
@@ -272,6 +272,7 @@ class NewCommunity(commands.Cog):
                 if interaction.channel_id!=cfg.LANGUAGE_CHANNEL_ID:
                     raise ValueError('请在语言频道操作')
                 requested=custom.rsplit(':',1)[1]
+                if requested=='english': requested='clear'
                 allowed={r for r in cfg.LANGUAGES.values() if r}
                 if requested!='clear' and int(requested) not in allowed:
                     raise ValueError('未知语言身份组')
@@ -293,7 +294,7 @@ class NewCommunity(commands.Cog):
                         raise
                     await db.audit(member.id,'language',{'role':target.id if target else None})
                 await db.setting('verify_language:'+str(interaction.user.id),reply_language)
-                reply=cp.text(reply_language,'updated')
+                reply='Language set to English (default).' if requested=='clear' else cp.text(reply_language,'updated')
             elif custom=='new:invites':
                 row=await db.query('SELECT COUNT(*) AS total,COALESCE(SUM(verified),0) AS verified FROM invitations WHERE inviter_id=%s',(interaction.user.id,),one=True)
                 reply=cp.text(reply_language,'counts',total=row['total'],verified=row['verified'] or 0)

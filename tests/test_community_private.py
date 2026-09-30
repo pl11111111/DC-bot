@@ -7,6 +7,18 @@ from modules.new_community import NewCommunity,cfg
 from utils import community_private as cp
 
 class CommunityPrivateTests(unittest.IsolatedAsyncioTestCase):
+    async def test_english_removes_only_language_roles_and_saves_preference(self):
+        language_role=NS(id=123)
+        member=NS(id=7,roles=[language_role,NS(id=20),NS(id=999)],add_roles=AsyncMock(),remove_roles=AsyncMock())
+        inter=NS(guild=NS(id=2,fetch_member=AsyncMock(return_value=member)),user=member,channel_id=3,data={'custom_id':'new:lang:english'},response=NS(defer=AsyncMock()),followup=NS(send=AsyncMock()))
+        cog=object.__new__(NewCommunity);cog.role_locks={}
+        with patch.object(cfg,'LANGUAGE_CHANNEL_ID',3),patch.object(cfg,'LANGUAGES',{'中文':123,'日本語':20}),patch.object(cfg,'LV2_ROLE_ID',20),patch('modules.new_community.db.audit',AsyncMock()),patch('modules.new_community.db.setting',AsyncMock()) as setting:
+            await cog.on_interaction(inter)
+        self.assertEqual(inter.followup.send.call_args.args[0],'Language set to English (default).')
+        member.remove_roles.assert_awaited_once_with(language_role,reason='Change optional language')
+        member.add_roles.assert_not_awaited()
+        setting.assert_awaited_once_with('verify_language:7','English')
+
     async def test_language_update_replies_in_new_language_not_old_member_snapshot(self):
         for lang in cp.ROWS:
             clear=lang=='English'
@@ -16,7 +28,7 @@ class CommunityPrivateTests(unittest.IsolatedAsyncioTestCase):
             cog=object.__new__(NewCommunity);cog.role_locks={}
             with patch.object(cfg,'LANGUAGE_CHANNEL_ID',3),patch.object(cfg,'LANGUAGES',{lang:123}),patch('modules.new_community.safe_self_role',return_value=True),patch('modules.new_community.db.audit',AsyncMock()),patch('modules.new_community.db.setting',AsyncMock()) as setting:
                 await cog.on_interaction(inter)
-            self.assertEqual(inter.followup.send.call_args.args[0],cp.text(lang,'updated'))
+            self.assertEqual(inter.followup.send.call_args.args[0],'Language set to English (default).' if clear else cp.text(lang,'updated'))
             setting.assert_awaited_once_with('verify_language:7',lang)
             self.assertTrue(inter.followup.send.call_args.kwargs['ephemeral'])
 
