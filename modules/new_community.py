@@ -307,6 +307,40 @@ class NewCommunity(commands.Cog):
             log.exception('New community interaction failed')
             await interaction.followup.send(str(exc) if isinstance(exc,ValueError) else '操作失败，请联系管理员检查权限或服务状态。',ephemeral=True)
 
+    @discord.slash_command(name='new_guide',description='指定现有指南、停止旧指南自动发布或查看状态（管理员）')
+    async def guide_control(self,ctx,action:discord.Option(str,choices=['指定新指南','停止自动发布','查看状态']),message_link:str=''):
+        if not ctx.guild or ctx.guild.id!=cfg.GUILD_ID or not admin(ctx.author,cfg.NOTICE_ADMIN_ROLES):
+            return await ctx.respond('没有操作权限。',ephemeral=True)
+        await ctx.defer(ephemeral=True)
+        from utils import payment_guide
+        from utils.translation_store import parse_link
+        try:
+            async with self.panel_lock:
+                current=await payment_guide.control()
+                if action=='指定新指南':
+                    channel_id,message_id=parse_link(message_link,cfg.GUILD_ID)
+                    channel=await self.channel(channel_id)
+                    if not isinstance(channel,discord.Thread) or channel.parent_id!=cfg.GUIDES_CHANNEL_ID:
+                        raise ValueError('请选择已配置指南论坛中的帖子消息链接。')
+                    message=await channel.fetch_message(message_id)
+                    if message.author.id!=self.bot.user.id:
+                        raise ValueError('请选择本 bot 发布的指南消息。')
+                    current={'auto_publish':False,'message_url':f'https://discord.com/channels/{cfg.GUILD_ID}/{channel_id}/{message_id}'}
+                    await payment_guide.save_control(ctx.author.id,current)
+                elif action=='停止自动发布':
+                    current=dict(current,auto_publish=False)
+                    await payment_guide.save_control(ctx.author.id,current)
+                elif action!='查看状态':
+                    raise ValueError('未知操作。')
+                link=await payment_guide.url()
+            await ctx.followup.send('指南自动发布：'+('开启' if current['auto_publish'] else '关闭')+
+                f'\n当前指南：{link or "未设置"}\n'+
+                ('设置已保存，即时生效，重启后仍保留。现在可以手动删除旧指南，它不会自动重发。已有付款消息里的旧链接需刷新消息后更新。' if action!='查看状态' else ''),
+                ephemeral=True,allowed_mentions=discord.AllowedMentions.none())
+        except Exception as exc:
+            log.exception('Guide control failed')
+            await ctx.followup.send(str(exc) if isinstance(exc,ValueError) else '操作结果需核对，请检查权限并使用「查看状态」确认。',ephemeral=True)
+
     @discord.slash_command(name='new_notice_file',description='上传 Markdown/TXT 完整发布长文，自动分段并支持整篇翻译')
     async def notice_file(self,ctx,channel:discord.abc.GuildChannel,title:str,file:discord.Attachment,tags:str=''):
         if not ctx.guild or ctx.guild.id!=cfg.GUILD_ID or not admin(ctx.author,cfg.NOTICE_ADMIN_ROLES):

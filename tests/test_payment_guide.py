@@ -23,7 +23,7 @@ class GuideTests(unittest.IsolatedAsyncioTestCase):
         async def setting(key,value=None):
             if value is not None: self.saved[key]=dict(value)
             return self.saved.get(key)
-        for target,value in [('GUIDES_CHANNEL_ID',3),('GUIDES_TAG_ID',0),('GUILD_ID',2)]:
+        for target,value in [('GUIDES_CHANNEL_ID',3),('GUIDES_TAG_ID',0),('GUILD_ID',2),('GUIDE_AUTO_PUBLISH',True),('GUIDE_MESSAGE_URL','')]:
             p=patch.object(guide.cfg,target,value); p.start(); self.addCleanup(p.stop)
         p=patch.object(guide.db,'setting',setting);p.start();self.addCleanup(p.stop)
 
@@ -33,6 +33,25 @@ class GuideTests(unittest.IsolatedAsyncioTestCase):
             await guide.sync(self.bot)
         create.assert_awaited_once();edit.assert_not_awaited()
         self.assertEqual(await guide.url(),'https://discord.com/channels/2/4/4')
+
+    async def test_command_override_disables_recreation_and_overrides_environment(self):
+        self.saved['guide_control:2']={'auto_publish':False,'message_url':'https://discord.com/channels/2/50/51'}
+        with patch.object(guide.cfg,'GUIDE_AUTO_PUBLISH',True),patch.object(guide.cfg,'GUIDE_MESSAGE_URL','https://discord.com/channels/2/4/4'),patch.object(guide.notice_card,'create_forum',AsyncMock()) as create,patch.object(guide.notice_card,'edit',AsyncMock()) as edit:
+            await guide.sync(self.bot)
+            create.assert_not_awaited();edit.assert_not_awaited()
+            self.assertEqual(await guide.url(),'https://discord.com/channels/2/50/51')
+
+    async def test_disabled_sync_never_recreates_or_edits_and_uses_new_link(self):
+        with patch.object(guide.cfg,'GUIDE_AUTO_PUBLISH',False),patch.object(guide.cfg,'GUIDE_MESSAGE_URL','https://discord.com/channels/2/50/51'),patch.object(guide.notice_card,'create_forum',AsyncMock()) as create,patch.object(guide.notice_card,'edit',AsyncMock()) as edit:
+            await guide.sync(self.bot)
+            create.assert_not_awaited();edit.assert_not_awaited()
+            self.bot.fetch_channel.assert_not_awaited()
+            self.assertEqual(await guide.url(),'https://discord.com/channels/2/50/51')
+
+    async def test_disabled_without_override_ignores_old_deleted_message(self):
+        self.saved['payment_guide:3']={'phase':'ready','thread':4,'message':4}
+        with patch.object(guide.cfg,'GUIDE_AUTO_PUBLISH',False):
+            self.assertEqual(await guide.url(),'https://discord.com/channels/2/3')
 
     async def test_ambiguous_creation_never_blindly_reposts(self):
         with patch.object(guide.notice_card,'create_forum',AsyncMock(side_effect=TimeoutError())) as create:

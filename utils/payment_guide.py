@@ -12,9 +12,32 @@ TITLE='交易BOT指南'
 KNOWN_TITLES=(TITLE,'新手付款指南 · USDT / BSC')
 SOURCE=Path(__file__).resolve().parents[1]/'config'/'payment_guide.md'
 
+async def control():
+    saved=await db.setting('guide_control:'+str(cfg.GUILD_ID))
+    if saved is not None: return saved
+    return {'auto_publish':cfg.GUIDE_AUTO_PUBLISH,'message_url':cfg.GUIDE_MESSAGE_URL}
+
+async def save_control(actor,value):
+    import json
+    key='guide_control:'+str(cfg.GUILD_ID)
+    async with db.transaction() as cur:
+        await cur.execute('SELECT value FROM settings WHERE setting_key=%s FOR UPDATE',(key,))
+        old=await cur.fetchone()
+        encoded=db.encode(value)
+        await cur.execute('INSERT INTO settings(setting_key,value) VALUES(%s,%s) ON DUPLICATE KEY UPDATE value=%s',(key,encoded,encoded))
+        await cur.execute('INSERT INTO audit(actor_id,action,details,order_id) VALUES(%s,%s,%s,NULL)',
+            (actor,'guide_control',db.encode({'before':json.loads(old['value']) if old else None,'after':value})))
+
 
 async def url():
+    selected=await control()
+    if selected.get('message_url'):
+        from utils.translation_store import parse_link
+        channel_id,message_id=parse_link(selected['message_url'],cfg.GUILD_ID)
+        return f'https://discord.com/channels/{cfg.GUILD_ID}/{channel_id}/{message_id}'
     if not cfg.GUILD_ID or not cfg.GUIDES_CHANNEL_ID: return None
+    if not selected['auto_publish']:
+        return f'https://discord.com/channels/{cfg.GUILD_ID}/{cfg.GUIDES_CHANNEL_ID}'
     saved=await db.setting('payment_guide:'+str(cfg.GUIDES_CHANNEL_ID))
     if saved and saved.get('phase')=='ready':
         return f"https://discord.com/channels/{cfg.GUILD_ID}/{saved['thread']}/{saved['message']}"
@@ -35,6 +58,7 @@ async def find_existing(forum,bot):
 
 
 async def sync(bot):
+    if not (await control())['auto_publish']: return
     if not cfg.GUILD_ID or not cfg.GUIDES_CHANNEL_ID: return
     forum=bot.get_channel(cfg.GUIDES_CHANNEL_ID) or await bot.fetch_channel(cfg.GUIDES_CHANNEL_ID)
     if not isinstance(forum,discord.ForumChannel) or forum.guild.id!=cfg.GUILD_ID:

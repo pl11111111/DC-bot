@@ -44,6 +44,8 @@ LANGUAGE_CHANNEL_ID = number('NEW_LANGUAGE_CHANNEL_ID')
 # Keep the user's existing spelling; also accept the conventional CHANNEL alias.
 GUIDES_CHANNEL_ID = number('NEW_GUIDES_CHANNE_ID', number('NEW_GUIDES_CHANNEL_ID'))
 GUIDES_TAG_ID = number('NEW_GUIDES_TAG_ID')
+GUIDE_AUTO_PUBLISH = os.getenv('NEW_GUIDE_AUTO_PUBLISH','true').strip().lower() in ('1','true','yes','on')
+GUIDE_MESSAGE_URL = os.getenv('NEW_GUIDE_MESSAGE_URL','').strip()
 VERIFIED_ROLE_ID = number('NEW_INVITE_VERIFIED_ROLE_ID')
 RANKING_CHANNEL_ID = number('NEW_INVITE_RANKING_CHANNEL_ID')
 TRADE_STATS_CHANNEL_ID = number('NEW_TRADE_STATS_CHANNEL_ID')
