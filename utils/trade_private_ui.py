@@ -116,6 +116,9 @@ def receipt_button(member):
 def error(member,exc):
     from utils.trade_admission import AdmissionDenied
     if isinstance(exc,AdmissionDenied):
+        if exc.key:
+            from utils.security_language import text as security_text
+            return security_text(member,exc.key,**exc.values)
         return exc.chinese if language(member)=='中文' else exc.english
     import logging
     logging.getLogger(__name__).warning('Private trade operation blocked: %s',exc)

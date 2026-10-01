@@ -206,6 +206,14 @@ async def on_guild_join(guild):
         except Exception as e:
             logger.error(f"创建 #top-inviters 频道时出错: {e}")
     
+def user_error_notice(member, guild, original):
+    # Preserve legacy guild responses; new-guild users receive their chosen language.
+    if guild and guild.id == config.NEW.GUILD_ID:
+        from utils.community_private import for_member
+        return for_member(member, 'error')
+    return original
+
+
 @bot.event
 async def on_application_command_error(ctx, error):
     """处理斜杠命令中的错误。"""
@@ -243,12 +251,12 @@ async def on_application_command_error(ctx, error):
             logger.error(f"命令错误: {error}", exc_info=(type(error),error,error.__traceback__))
             if not ctx.response.is_done():
                 await ctx.respond(
-                    "处理此命令时发生错误。请稍后重试。",
+                    user_error_notice(ctx.author,ctx.guild,"处理此命令时发生错误。请稍后重试。"),
                     ephemeral=True
                 )
             else:
                 await ctx.followup.send(
-                    "处理此命令时发生错误。请稍后重试。",
+                    user_error_notice(ctx.author,ctx.guild,"处理此命令时发生错误。请稍后重试。"),
                     ephemeral=True
                 )
     except Exception as e:
@@ -264,7 +272,7 @@ async def on_error(event, *args, **kwargs):
             try:
                 # 尝试响应交互
                 await interaction.response.defer(ephemeral=True)
-                await interaction.followup.send("处理您的请求时出错。请稍后再试。", ephemeral=True)
+                await interaction.followup.send(user_error_notice(interaction.user,interaction.guild,"处理您的请求时出错。请稍后再试。"), ephemeral=True)
             except Exception as e:
                 logger.error(f"无法响应交互: {e}")
     

@@ -13,7 +13,8 @@ GATE = 'trade_admission'
 
 
 class AdmissionDenied(ValueError):
-    def __init__(self, chinese, english):
+    def __init__(self, chinese, english, *, key=None, **values):
+        self.key, self.values = key, values
         self.chinese, self.english = chinese, english
         super().__init__(english)
 
@@ -36,25 +37,25 @@ async def reserve(cur, initiator, other):
     now = int((await cur.fetchone())['now'])
     recent = [stamp for stamp in recent if stamp>now-60]
     if len(recent)>=10:
-        raise AdmissionDenied('当前创建交易较多，请一分钟后重试。','Too many new trades. Please try again in one minute.')
+        raise AdmissionDenied('当前创建交易较多，请一分钟后重试。','Too many new trades. Please try again in one minute.',key='busy')
     key = 'trade_rate:'+str(initiator)
     await cur.execute('SELECT value FROM settings WHERE setting_key=%s', (key,))
     stored = await cur.fetchone()
     history = [stamp for stamp in json.loads(stored['value']) if stamp>now-3600] if stored else []
     if history and now-max(history)<cfg.TRADE_CREATE_COOLDOWN:
-        raise AdmissionDenied(f'创建交易后请等待 {cfg.TRADE_CREATE_COOLDOWN} 秒再发起，取消订单不会重置等待时间。', f'Wait {cfg.TRADE_CREATE_COOLDOWN} seconds between new trades. Cancelling does not reset this limit.')
+        raise AdmissionDenied(f'创建交易后请等待 {cfg.TRADE_CREATE_COOLDOWN} 秒再发起，取消订单不会重置等待时间。', f'Wait {cfg.TRADE_CREATE_COOLDOWN} seconds between new trades. Cancelling does not reset this limit.',key='cooldown',seconds=cfg.TRADE_CREATE_COOLDOWN)
     if len(history)>=cfg.TRADE_CREATE_HOURLY:
-        raise AdmissionDenied('本小时创建交易次数已达上限，请稍后再试。','Your hourly trade creation limit has been reached. Please try later.')
+        raise AdmissionDenied('本小时创建交易次数已达上限，请稍后再试。','Your hourly trade creation limit has been reached. Please try later.',key='hourly')
     for uid in (initiator,other):
         if await active(cur,uid)>=cfg.MAX_ACTIVE:
             raise ValueError(f'每位用户最多同时进行 {cfg.MAX_ACTIVE} 笔交易，请先完成或取消已有订单。')
     await cur.execute("SELECT COUNT(*) AS n FROM orders WHERE status='pending' AND (buyer_id=%s OR seller_id=%s) AND initiator_id<>%s", (other,other,other))
     if (await cur.fetchone())['n']>=cfg.TRADE_MAX_INCOMING:
-        raise AdmissionDenied('对方尚未处理的交易邀请较多，请等待对方处理。','This member already has pending invitations. Wait for them to respond.')
+        raise AdmissionDenied('对方尚未处理的交易邀请较多，请等待对方处理。','This member already has pending invitations. Wait for them to respond.',key='incoming')
     # Cancelled/finished channels still consume real Discord capacity until deleted.
     await cur.execute(f"SELECT COUNT(*) AS n FROM orders o WHERE NOT EXISTS(SELECT 1 FROM settings s WHERE s.setting_key=CONCAT('channel_deleted:',o.id)) AND (o.channel_id IS NOT NULL OR o.status NOT IN {TERMINAL_SQL})")
     if (await cur.fetchone())['n']>=cfg.TRADE_MAX_CHANNELS:
-        raise AdmissionDenied('交易频道已达容量上限，请等待已有频道处理完成。现有交易可继续。','Trade channel capacity reached. Please wait; existing trades can continue.')
+        raise AdmissionDenied('交易频道已达容量上限，请等待已有频道处理完成。现有交易可继续。','Trade channel capacity reached. Please wait; existing trades can continue.',key='capacity')
     # The payment step expects both accounts to exist, even with no earned credit.
     # Preserve this creation invariant while the settings row owns admission locking.
     for uid in sorted((initiator,other)):
@@ -72,7 +73,7 @@ async def confirm(cur, ident, actor):
     if not row or row['status']!='pending':
         return  # The caller's conditional UPDATE will report the stale order.
     if actor not in (row['buyer_id'],row['seller_id']) or actor==row['initiator_id']:
-        raise AdmissionDenied('只有被邀请的交易对方可以确认。','Only the invited participant can accept this trade.')
+        raise AdmissionDenied('只有被邀请的交易对方可以确认。','Only the invited participant can accept this trade.',key='invited')
     for uid in (row['buyer_id'],row['seller_id']):
         if await active(cur,uid,excluding=ident)>=cfg.MAX_ACTIVE:
             raise ValueError(f'每位用户最多同时进行 {cfg.MAX_ACTIVE} 笔交易，请先完成或取消已有订单。')

@@ -9,6 +9,7 @@ from collections import OrderedDict
 import discord
 from discord.state import ConnectionState
 import config
+from utils.security_language import text as security_text
 
 
 class TokenBucket:
@@ -98,7 +99,7 @@ class GuardedConnectionState(ConnectionState):
                     await interaction.response.send_autocomplete_result([])
                 else:
                     await interaction.response.send_message(
-                        '操作过于频繁，请稍后重试。 / Too many requests. Please wait and try again.',
+                        security_text(interaction.user,'rate'),
                         ephemeral=True, allowed_mentions=discord.AllowedMentions.none())
             await asyncio.wait_for(reply(), timeout=5)
         except (Exception, asyncio.CancelledError):

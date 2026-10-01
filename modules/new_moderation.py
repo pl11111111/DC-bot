@@ -6,6 +6,7 @@ from discord.ext import commands
 import config
 from utils import new_store as db
 from utils.abuse_guard import TokenBucket
+from utils.security_language import text as security_text
 
 cfg = config.NEW
 log = logging.getLogger(__name__)
@@ -64,7 +65,7 @@ class NewModeration(commands.Cog):
             return
         try:
             await message.channel.send(
-                f'<@{member.id}> Only members with the LV3 role can post links. / 需要 LV3 身份组才能发送链接。',
+                f"<@{member.id}> {security_text(member,'links')}",
                 delete_after=15, allowed_mentions=discord.AllowedMentions.none())
         except discord.HTTPException:
             log.warning('Could not send LV3 warning in channel %s', message.channel.id)
