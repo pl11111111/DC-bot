@@ -66,11 +66,11 @@ class NewTrading(commands.Cog):
 
     def cog_unload(self): self.worker.cancel()
 
-    @user_command(name="开始交易(buy)", guild_ids=[cfg.GUILD_ID] if cfg.GUILD_ID else None,name_localizations=ui_localizations('context_buy'))
+    @user_command(name=ui_text('English','context_buy'), guild_ids=[cfg.GUILD_ID] if cfg.GUILD_ID else None,name_localizations=ui_localizations('context_buy'))
     async def trade_callback(self, ctx, user: discord.User):
         await self.start(ctx, user, buy=True)
 
-    @user_command(name="开始交易(sell)", guild_ids=[cfg.GUILD_ID] if cfg.GUILD_ID else None,name_localizations=ui_localizations('context_sell'))
+    @user_command(name=ui_text('English','context_sell'), guild_ids=[cfg.GUILD_ID] if cfg.GUILD_ID else None,name_localizations=ui_localizations('context_sell'))
     async def trade_sell_callback(self, ctx, user: discord.User):
         await self.start(ctx, user, buy=False)
 
@@ -354,15 +354,20 @@ class NewTrading(commands.Cog):
         if not buy and not sell and not stored: return
         await db.query("INSERT INTO tracked_channels(channel_id,kind) VALUES(%s,'forum') ON DUPLICATE KEY UPDATE channel_id=channel_id",(thread.id,))
         prompt=texts()['forum_prompt']
-        if prompt=='与发布者沟通并确认商品、价格和交付条件后，可点击下方按钮发起 bot 担保交易。':
-            prompt=ui_text(getattr(thread,'guild',None),'forum_prompt')
-        text=prompt if buy!=sell else ui_text(getattr(thread,'guild',None),'forum_tags')
-        view=buttons([(ui_text(getattr(thread,'guild',None),'choice_buy' if sell else 'choice_sell'),'forum:'+str(thread.id))]) if buy!=sell else buttons([])
-        if buy!=sell: view.children[0].emoji='🛒' if sell else '💵'
+        if prompt in ('与发布者沟通并确认商品、价格和交付条件后，可点击下方按钮发起 bot 担保交易。',ui_text('English','forum_prompt')):
+            prompt=('🤝 **Agree on the details**\nDiscuss the item, price and delivery terms with the author.\n\n'
+                    '🛡️ **Start an escrow trade**\nUse the button below once you have agreed. The bot will create a private channel for both participants.\n\n'
+                    '💳 **Wait for payment instructions**\nDo not pay until the trade is confirmed and the bot provides your order’s payment information.')
+        text=prompt if buy!=sell else '⚠️ '+ui_text('English','forum_tags')
+        embed=discord.Embed(title='🛡️ Escrow Trade',description=text,color=0x9854DE)
+        view=buttons([(ui_text('English','choice_buy' if sell else 'choice_sell'),'forum:'+str(thread.id))]) if buy!=sell else buttons([])
+        if buy!=sell:
+            view.children[0].emoji='🛒' if sell else '💵'
+            view.children[0].style=discord.ButtonStyle.primary
         if stored:
             try:
                 msg=await thread.fetch_message(stored)
-                await msg.edit(content=text,view=view)
+                await msg.edit(content=None,embed=embed,view=view)
                 return
             except discord.NotFound: pass
         if not thread.archived and not thread.locked:
@@ -374,7 +379,7 @@ class NewTrading(commands.Cog):
                 self.pending_forums.add(thread.id)
                 return
             try:
-                msg=await thread.send(text,view=view)
+                msg=await thread.send(embed=embed,view=view)
             except discord.Forbidden as exc:
                 if exc.code!=40058: raise  # Real permission failures must remain visible.
                 self.pending_forums.add(thread.id)
