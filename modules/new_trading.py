@@ -355,9 +355,7 @@ class NewTrading(commands.Cog):
         await db.query("INSERT INTO tracked_channels(channel_id,kind) VALUES(%s,'forum') ON DUPLICATE KEY UPDATE channel_id=channel_id",(thread.id,))
         prompt=texts()['forum_prompt']
         if prompt in ('与发布者沟通并确认商品、价格和交付条件后，可点击下方按钮发起 bot 担保交易。',ui_text('English','forum_prompt')):
-            prompt=('🤝 **Agree on the details**\nDiscuss the item, price and delivery terms with the author.\n\n'
-                    '🛡️ **Start an escrow trade**\nUse the button below once you have agreed. The bot will create a private channel for both participants.\n\n'
-                    '💳 **Wait for payment instructions**\nDo not pay until the trade is confirmed and the bot provides your order’s payment information.')
+            prompt='🤝 Agree on the item and price with the author, then click below to start an escrow trade.'
         text=prompt if buy!=sell else '⚠️ '+ui_text('English','forum_tags')
         embed=discord.Embed(title='🛡️ Escrow Trade',description=text,color=0x9854DE)
         view=buttons([(ui_text('English','choice_buy' if sell else 'choice_sell'),'forum:'+str(thread.id))]) if buy!=sell else buttons([])
