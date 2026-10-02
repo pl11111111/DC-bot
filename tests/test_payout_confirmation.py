@@ -9,16 +9,22 @@ from modules.new_trading import NewTrading,OrderStateChanged
 
 
 class PayoutConfirmationTests(unittest.IsolatedAsyncioTestCase):
-    async def prepare(self):
+    async def prepare(self,refresh_during_defer=False):
         cog=object.__new__(NewTrading)
         row=dict(id='order',status='receipt_confirmed',buyer_id=1,seller_id=2,amount=D('3.01'))
         inter=NS(user=NS(id=2,roles=[]),response=NS(send_modal=AsyncMock()))
         await cog.address_modal(inter,row)
         modal=inter.response.send_modal.await_args.args[0]
         modal.children[0]._input_value='0x1234567890123456789012345678901234567890'
+        self.address_field=modal.children[0]
         click=NS(user=NS(id=2,roles=[]),response=NS(defer=AsyncMock()),followup=NS(send=AsyncMock()))
-        with patch('modules.new_trading.payments.payout_quote',AsyncMock(return_value=(D('.01'),D('3')))):
+        if refresh_during_defer:
+            async def defer(**kwargs):
+                self.address_field._input_value='0x3234567890123456789012345678901234567890'
+            click.response.defer.side_effect=defer
+        with patch('modules.new_trading.payments.payout_quote',AsyncMock(return_value=(D('.01'),D('3')))) as quote:
             await modal.callback(click)
+            quote.assert_awaited_once_with('0x1234567890123456789012345678901234567890',D('3.01'))
         return cog,row,click.followup.send.await_args.kwargs['view'].children[0]
 
     def confirm(self):
@@ -54,3 +60,19 @@ class PayoutConfirmationTests(unittest.IsolatedAsyncioTestCase):
             await button.callback(inter)
             release.assert_not_awaited()
         self.assertIn('Do not submit another request',inter.followup.send.await_args.args[0])
+
+    async def test_confirmation_keeps_the_address_shown_in_its_own_quote(self):
+        cog,row,button=await self.prepare()
+        shown='0x1234567890123456789012345678901234567890'
+        # A second modal submission can refresh the same InputText instance.
+        self.address_field._input_value='0x2234567890123456789012345678901234567890'
+        cog.order=AsyncMock(return_value=row)
+        cog.transition=AsyncMock(); cog.post=AsyncMock()
+        with patch('modules.new_trading.db.query',AsyncMock()),patch('modules.new_trading.payments.release',AsyncMock()) as release,patch('modules.new_trading.payments.payout_quote',AsyncMock(return_value=(D('.01'),D('3')))) as quote:
+            await button.callback(self.confirm())
+        quote.assert_awaited_once_with(shown,D('3.01'))
+        release.assert_awaited_once_with('new:order',shown,D('3.01'),D('.01'),D('3'))
+        self.assertEqual(cog.transition.await_args.args[4]['address'],shown)
+
+    async def test_submission_captures_address_before_deferring(self):
+        await self.prepare(refresh_during_defer=True)

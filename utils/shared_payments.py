@@ -8,6 +8,10 @@ import config
 from utils import new_store as db
 from utils import payout_guard
 
+MAX_PRICE = Decimal('1000000')
+MAX_INVOICE_BASE = MAX_PRICE + config.NEW.FEE
+MAX_SETTLEMENT = MAX_INVOICE_BASE + Decimal('.009999')
+
 class DepositNotReady(ValueError):
     """A matching deposit exists: never treat it as an unpaid invoice."""
     def __init__(self,status):
@@ -17,15 +21,15 @@ class DepositNotReady(ValueError):
         label=labels.get(status,'未知状态') if type(status) is int else '未知状态'
         super().__init__(f'匹配入款状态 {status!r}（{label}），保留订单，暂不允许发货或放款')
 
-def money(value):
+def money(value, *, maximum=MAX_PRICE):
     try:
         result = Decimal(str(value))
     except InvalidOperation:
         # Invalid public input is a validation failure, not a system exception.
         # Never include the submitted value in logs or user-facing errors.
         raise ValueError('金额格式无效，请输入有效数字') from None
-    if not result.is_finite() or result <= 0 or result > Decimal('1000000'):
-        raise ValueError('金额必须大于 0 且不超过 1,000,000 USDT')
+    if not result.is_finite() or result <= 0 or result > maximum:
+        raise ValueError(f'金额必须大于 0 且不超过 {maximum:,f} USDT')
     rounded=result.quantize(Decimal('0.000001'))
     if rounded<=0:
         raise ValueError('金额低于支持的精度')
@@ -81,14 +85,25 @@ async def cancel_legacy_trade(ident):
 
 async def invoice(key, address, base):
     await require_ready()
-    base = money(base).quantize(Decimal('.01'))
+    # Credits are stored to six decimals. Rounding this base to cents would
+    # change the actual service charge and can invalidate the payout budget.
+    base = money(base, maximum=MAX_INVOICE_BASE)
+    base_key='invoice_base:'+hashlib.sha256(key.encode()).hexdigest()
+    async def existing_amount(cur,row):
+        await cur.execute('SELECT value FROM payment_settings WHERE setting_key=%s',(base_key,))
+        saved=await cur.fetchone()
+        # Older invoices always used a cent-rounded base plus a sub-cent tail.
+        original_base=Decimal(saved['value']) if saved else row['amount'].quantize(Decimal('.01'),rounding=ROUND_DOWN)
+        if (row['address']!=address or row['state']!='waiting' or row['expires_at']<=datetime.utcnow()
+                or original_base!=base
+                or not Decimal('.001')<=Decimal(str(row['amount']))-base<=Decimal('.009999')):
+            raise ValueError('原账单金额、地址或状态与请求不符，请核对；禁止覆盖或重新收款')
+        return row['amount']
     async with db.transaction(True) as cur:
         await cur.execute('SELECT * FROM invoices WHERE order_key=%s FOR UPDATE', (key,))
         found = await cur.fetchone()
         if found:
-            if found['address'] != address or found['state'] != 'waiting' or found['expires_at'] <= datetime.utcnow():
-                raise ValueError('付款请求已过期或已处理，请联系管理员核对，不要重复付款')
-            return found['amount']
+            return await existing_amount(cur,found)
         # Never reuse an old amount automatically: late deposits must not fund a new order.
         import pymysql
         for _ in range(100):
@@ -96,12 +111,16 @@ async def invoice(key, address, base):
             try:
                 await cur.execute('INSERT INTO invoices(order_key,address,amount,expires_at) VALUES(%s,%s,%s,%s)',
                                   (key,address,amount,datetime.utcnow()+timedelta(minutes=30)))
-                return amount
             except pymysql.IntegrityError:
                 await cur.execute('SELECT * FROM invoices WHERE order_key=%s', (key,))
                 row = await cur.fetchone()
                 if row:
-                    return row['amount']
+                    return await existing_amount(cur,row)
+                continue
+            # Commit the exact six-decimal base with the invoice; retries must
+            # reject even a sub-cent change that could resemble a different tail.
+            await cur.execute('INSERT INTO payment_settings(setting_key,value) VALUES(%s,%s)',(base_key,str(base)))
+            return amount
         raise ValueError('无法分配唯一付款金额，请稍后重试；本次没有生成账单')
 
 async def find_deposit(key, address, expected):
@@ -171,7 +190,7 @@ async def payout_amount_quote(gross):
     """Read-only network check, also used before accepting buyer payment."""
     network=await withdrawal_network()
     fee = Decimal(str(network['withdrawFee']))
-    gross = money(gross)
+    gross = money(gross, maximum=MAX_SETTLEMENT)
     step = Decimal(str(network.get('withdrawIntegerMultiple') or '0.000001'))
     minimum = Decimal(str(network['withdrawMin']))
     maximum = Decimal(str(network['withdrawMax'])) if network.get('withdrawMax') is not None else None
@@ -198,8 +217,10 @@ async def release(key, address, gross, fee=Decimal(0), net=None):
     if not key.startswith('new:'):
         raise ValueError('旧社群及未识别订单的自动放款已停用')
     from utils.binance_api import make_api_request
-    gross = money(gross)
-    net = gross if net is None else money(net)
+    # A full refund includes service fees and the invoice identification tail.
+    # authorize() still limits every payout to this order's confirmed deposit.
+    gross = money(gross, maximum=MAX_SETTLEMENT)
+    net = gross if net is None else money(net, maximum=MAX_SETTLEMENT)
     fee=Decimal(str(fee))
     if not fee.is_finite() or fee<0 or net+fee>gross:
         raise ValueError('放款金额和费用超过订单允许的总额')
@@ -233,33 +254,46 @@ async def release(key, address, gross, fee=Decimal(0), net=None):
         {'coin':'USDT','network':'BSC','address':address,'amount':format(request_amount,'f'),
          'withdrawOrderId':request_id,'transactionFeeFlag':'true','walletType':'0'})
     provider_id = response.get('id') if isinstance(response,dict) else None
-    await db.query('UPDATE payouts SET state=%s,provider_id=%s,payload=%s WHERE order_key=%s',
+    await db.query("UPDATE payouts SET state=%s,provider_id=%s,payload=%s WHERE state='submitting' AND order_key=%s",
         ('submitted' if provider_id else 'unknown',provider_id,db.encode(response),key),shared=True)
     return False, provider_id, '已经触发了资金释放，等待提现结果核对，请勿重复操作'
 
 async def reconcile(key):
     from utils.binance_api import make_api_request
     row = await db.query('SELECT * FROM payouts WHERE order_key=%s',(key,),shared=True,one=True)
-    if not row or row['state'] in ('completed','manual_refunded'):
+    if not row or row['state'] in ('completed','manual_refunded','review'):
         return row
     start=row['created_at'].replace(tzinfo=__import__('datetime').timezone.utc)
     end=min(datetime.now(__import__('datetime').timezone.utc),start+timedelta(days=6,hours=23))
     response = await make_api_request('/sapi/v1/capital/withdraw/history','GET',
         {'withdrawOrderId':row['request_id'],'startTime':int(start.timestamp()*1000),'endTime':int(end.timestamp()*1000)})
-    matches = [r for r in response or [] if r.get('withdrawOrderId')==row['request_id']] if isinstance(response,list) else []
+    if not isinstance(response,list) or any(not isinstance(item,dict) for item in response):
+        raise ValueError('提现流水查询失败，不能判定成功或失败，禁止重复提交')
+    matches = [r for r in response if r.get('withdrawOrderId')==row['request_id']]
+    if len(matches)>1:
+        await payout_guard.freeze(key,'同一提现请求匹配多条流水，需人工核对',matches)
+    elif not matches and row['state']=='submitting' and datetime.now(__import__('datetime').timezone.utc)-start>=timedelta(minutes=2):
+        # A crash can happen between committing the intent and receiving its result.
+        # An empty lookup is not proof that it is safe to submit another withdrawal.
+        await db.query("UPDATE payouts SET state='unknown' WHERE state='submitting' AND order_key=%s",(key,),shared=True)
     if len(matches)==1:
         item=matches[0]
-        if key.startswith('new:') and item.get('status')==6:
-            import json
-            saved=await db.query('SELECT value FROM payment_settings WHERE setting_key=%s',('payout_guard:'+key,),shared=True,one=True)
-            try:
+        try:
+            if (not isinstance(item.get('id'),str) or not item['id'] or len(item['id'])>100
+                    or (row.get('provider_id') and item['id']!=row['provider_id'])
+                    or str(item.get('address','')).lower()!=row['address'].lower()
+                    or type(item.get('status')) is not int or item['status'] not in (0,1,2,3,4,5,6)):
+                raise ValueError('提现流水标识、地址或状态不符，需人工核对')
+            if key.startswith('new:') and item['status']==6:
+                import json
+                saved=await db.query('SELECT value FROM payment_settings WHERE setting_key=%s',('payout_guard:'+key,),shared=True,one=True)
                 payout_guard.check_result(row,item,json.loads(saved['value']) if saved else None)
-            except (ValueError,TypeError,KeyError,ArithmeticError) as exc:
-                await payout_guard.freeze(key,str(exc),item)
-                return await db.query('SELECT * FROM payouts WHERE order_key=%s',(key,),shared=True,one=True)
-        if item.get('address') != row['address']:
-            raise ValueError('提现历史地址不符，需人工核对')
+        except (ValueError,TypeError,KeyError,ArithmeticError) as exc:
+            await payout_guard.freeze(key,str(exc),item)
+            return await db.query('SELECT * FROM payouts WHERE order_key=%s',(key,),shared=True,one=True)
         state = 'completed' if item.get('status')==6 else ('failed' if item.get('status') in (1,3,5) else 'submitted')
-        await db.query('UPDATE payouts SET state=%s,provider_id=%s,payload=%s WHERE order_key=%s',
+        # Late GET/POST responses must not clear a review hold or roll back completion.
+        eligible="('submitting','submitted','unknown','failed')" if state=='completed' else "('submitting','submitted','unknown')"
+        await db.query(f'UPDATE payouts SET state=%s,provider_id=%s,payload=%s WHERE state IN {eligible} AND order_key=%s',
                        (state,item.get('id'),db.encode(item),key),shared=True)
     return await db.query('SELECT * FROM payouts WHERE order_key=%s',(key,),shared=True,one=True)

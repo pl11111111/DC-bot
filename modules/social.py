@@ -1,3 +1,5 @@
+from utils.ui_language import localizations as ui_localizations, command_names as ui_command_names
+from utils.ui_language import text as ui_text
 import discord
 from discord.ext import commands
 from discord import SlashCommandGroup, ApplicationContext
@@ -11,6 +13,7 @@ import re
 
 import config
 from utils import database, redis_client, helpers
+from utils.security import has_configured_role
 
 # 自定义日志过滤器，过滤掉高频且不重要的日志
 class SocialLogFilter(logging.Filter):
@@ -49,8 +52,11 @@ class InviteButtonView(discord.ui.View):
         # 将超时设置为None使视图持久化
         super().__init__(timeout=None)
         self.bot = bot
+        for child in self.children:
+            if child.custom_id=='create_invite_button':
+                child.label=ui_text(bot.get_guild(config.GUILD_ID),'legacy_048')
     
-    @discord.ui.button(style=discord.ButtonStyle.primary, label="创建邀请链接", custom_id="create_invite_button")
+    @discord.ui.button(style=discord.ButtonStyle.primary, label=ui_text('English','legacy_048'), custom_id="create_invite_button")
     async def invite_button_callback(self, button, interaction):
         """当邀请按钮被点击时的回调"""
         if not config.LEGACY_RANKING_ENABLED:
@@ -61,7 +67,7 @@ class InviteButtonView(discord.ui.View):
             
             # 立即发送初始响应
             try:
-                await interaction.response.send_message("正在处理邀请链接请求...", ephemeral=True)
+                await interaction.response.send_message(ui_text(interaction,'legacy_082'), ephemeral=True)
                 logger.info(f"发送了初始响应给用户 {user_id}")
             except Exception as e:
                 logger.error(f"发送初始响应时出错: {str(e)}")
@@ -100,8 +106,7 @@ class InviteButtonView(discord.ui.View):
                                 
                                 if valid_invite:
                                     await interaction.followup.send(
-                                        f"您已有一个有效的邀请链接: {valid_invite.url}\n"
-                                        f"每用户只能创建一个永久邀请链接。每邀请一个新用户加入，您将获得奖励！", 
+                                        ui_text(interaction,'legacy_121',v0=f'{valid_invite.url}'), 
                                         ephemeral=True
                                     )
                                     logger.info(f"向用户 {user_id} 返回了现有邀请 {valid_invite.url}，拒绝创建新邀请")
@@ -112,8 +117,7 @@ class InviteButtonView(discord.ui.View):
                             # 如果验证失败或邀请无效，仍然返回该邀请链接
                             invite_url = f"https://discord.gg/{invite_code}"
                             await interaction.followup.send(
-                                f"您已有一个邀请链接: {invite_url}\n"
-                                f"每用户只能创建一个永久邀请链接。如果此链接已失效，请联系管理员。", 
+                                ui_text(interaction,'legacy_120',v0=f'{invite_url}'), 
                                 ephemeral=True
                             )
                             logger.info(f"向用户 {user_id} 返回了现有邀请 {invite_url}，拒绝创建新邀请")
@@ -126,7 +130,7 @@ class InviteButtonView(discord.ui.View):
                 # 出错时，保险起见，阻止创建新邀请
                 try:
                     await interaction.followup.send(
-                        "验证您的邀请状态时出错，请稍后再试。如需帮助，请联系管理员。", 
+                        ui_text(interaction,'legacy_112'), 
                         ephemeral=True
                     )
                     return
@@ -159,8 +163,7 @@ class InviteButtonView(discord.ui.View):
                 # 发送邀请链接给用户
                 try:
                     await interaction.followup.send(
-                        f"您的专属邀请链接已创建: {invite.url}\n"
-                        f"每用户只能创建一个永久邀请链接。每邀请一个新用户加入，您将获得奖励！", 
+                        ui_text(interaction,'legacy_100',v0=f'{invite.url}'), 
                         ephemeral=True
                     )
                     logger.info(f"已发送邀请链接给用户 {user_id}")
@@ -200,7 +203,7 @@ class InviteButtonView(discord.ui.View):
             except Exception as e:
                 logger.error(f"创建邀请链接时出错: {str(e)}", exc_info=True)
                 try:
-                    await interaction.followup.send("创建邀请链接时出错，请稍后再试。", ephemeral=True)
+                    await interaction.followup.send(ui_text(interaction,'legacy_113'), ephemeral=True)
                 except:
                     pass
                     
@@ -209,9 +212,9 @@ class InviteButtonView(discord.ui.View):
             try:
                 # 尝试发送错误消息
                 if not interaction.response.is_done():
-                    await interaction.response.send_message("处理您的请求时出错，请稍后再试。", ephemeral=True)
+                    await interaction.response.send_message(ui_text(interaction,'legacy_114'), ephemeral=True)
                 else:
-                    await interaction.followup.send("处理您的请求时出错，请稍后再试。", ephemeral=True)
+                    await interaction.followup.send(ui_text(interaction,'legacy_114'), ephemeral=True)
             except Exception as inner_e:
                 logger.error(f"在处理错误时发生额外错误: {str(inner_e)}")
                 
@@ -335,10 +338,10 @@ class Social(commands.Cog):
         self.invites_cache = {}  # 用于存储每个服务器的邀请缓存
         
         # 创建斜杠命令组 (使用py-cord的SlashCommandGroup)
-        self.invite_group = SlashCommandGroup("invite","邀请相关命令")
+        self.invite_group = SlashCommandGroup("invite",ui_text('English','cmd_invites'),description_localizations=ui_localizations('cmd_invites'),name_localizations=ui_command_names('cmd_invites'))
         
         # 把斜杠命令方法注册到命令组
-        self.invite_group.command(name="查询邀请", description="查看你的邀请次数和排名")(self.my_invites_slash)
+        self.invite_group.command(name="查询邀请", description=ui_text('English','cmd_invites'),description_localizations=ui_localizations('cmd_invites'),name_localizations=ui_command_names('cmd_invites'))(self.my_invites_slash)
         # 注：更新排名命令已移动到admin.py
         
         # 在__init__中直接创建和启动后台任务，确保它们在Cog加载后立即开始运行
@@ -596,8 +599,8 @@ class Social(commands.Cog):
             
             # 创建排名嵌入消息
             embed = discord.Embed(
-                title="🏆 邀请排行榜",
-                description="邀请新用户加入服务器并获得验证的排名",
+                title=ui_text(self.bot.get_guild(config.GUILD_ID),'legacy_043'),
+                description=ui_text(self.bot.get_guild(config.GUILD_ID),'legacy_044'),
                 color=discord.Color.gold()
             )
             
@@ -626,19 +629,19 @@ class Social(commands.Cog):
                 rank_emoji = "🥇" if i == 0 else "🥈" if i == 1 else "🥉" if i == 2 else f"{i+1}."
                 
                 embed.add_field(
-                    name=f"{rank_emoji} 排名",
-                    value=f"{user_display}\n已验证邀请: **{inviter['invite_count']}**",
+                    name=ui_text(self.bot.get_guild(config.GUILD_ID),'legacy_069',v0=f'{rank_emoji}'),
+                    value=ui_text(self.bot.get_guild(config.GUILD_ID),'legacy_070',v0=f'{user_display}',v1=f"{inviter['invite_count']}"),
                     inline=False
                 )
             
             # 添加页脚
-            embed.set_footer(text=f"上次更新: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+            embed.set_footer(text=ui_text(self.bot.get_guild(config.GUILD_ID),'legacy_045',v0=f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"))
             
             # 创建查看我的邀请按钮
             view = discord.ui.View(timeout=None)
             my_invites_button = discord.ui.Button(
                 style=discord.ButtonStyle.primary,
-                label="查看我的邀请人数", 
+                label=ui_text(self.bot.get_guild(config.GUILD_ID),'legacy_046'), 
                 emoji="👥",
                 custom_id="my_invites_button"
             )
@@ -647,7 +650,7 @@ class Social(commands.Cog):
             # 添加刷新奖励按钮
             refresh_rewards_button = discord.ui.Button(
                 style=discord.ButtonStyle.success,
-                label="刷新我的奖励", 
+                label=ui_text(self.bot.get_guild(config.GUILD_ID),'legacy_047'), 
                 emoji="🔄",
                 custom_id="refresh_rewards_button"
             )
@@ -656,7 +659,7 @@ class Social(commands.Cog):
             # 添加创建邀请链接按钮
             create_invite_button = discord.ui.Button(
                 style=discord.ButtonStyle.primary,
-                label="创建邀请链接",
+                label=ui_text(self.bot.get_guild(config.GUILD_ID),'legacy_048'),
                 emoji="📨",
                 custom_id="create_invite_button"
             )
@@ -704,32 +707,32 @@ class Social(commands.Cog):
             tb_str = ''.join(traceback.format_exception(type(e), e, e.__traceback__))
             logger.error(f"详细错误跟踪:\n{tb_str}")
 
-    @commands.command(name="update_ranks", description="手动更新邀请排名（仅限管理员）")
+    @commands.command(name="update_ranks", description=ui_text('English','cmd_rank'))
     @commands.has_any_role(config.ADMIN_ROLE_ID, config.MODERATOR_ROLE_ID)
     async def update_ranks(self, ctx):
         """手动更新邀请排名和排名角色（仅限管理员使用）"""
         if not config.LEGACY_RANKING_ENABLED:
             return
-        await ctx.send("正在更新邀请排名和排名角色，请稍候...")
+        await ctx.send(ui_text(ctx,'legacy_051'))
         
         try:
             # 更新排名
             await self.update_invite_leaderboard()
             
             # 提示成功
-            await ctx.send("✅ 邀请排名和排名角色已成功更新！")
+            await ctx.send(ui_text(ctx,'legacy_007'))
             
         except Exception as e:
             logger.error(f"手动更新排名时出错: {str(e)}", exc_info=True)
-            await ctx.send(f"❌ 更新排名时出错: {str(e)}")
+            await ctx.send(ui_text(ctx,'legacy_022',v0=f'{str(e)}'))
     
     async def update_ranks_slash(self, ctx: ApplicationContext):
         """手动更新邀请排名（斜杠命令版本）。"""
         if not config.LEGACY_RANKING_ENABLED:
             return
         # 检查权限
-        if not any(role.id in [config.ADMIN_ROLE_ID, config.MODERATOR_ROLE_ID] for role in ctx.author.roles):
-            await ctx.respond("您没有权限执行此命令。", ephemeral=True)
+        if not has_configured_role(ctx.author,(config.ADMIN_ROLE_ID,config.MODERATOR_ROLE_ID),config.GUILD_ID):
+            await ctx.respond(ui_text(ctx,'legacy_006'), ephemeral=True)
             return
             
         # 发送初始响应
@@ -740,13 +743,13 @@ class Social(commands.Cog):
             await self.update_invite_leaderboard()
             
             # 提示成功
-            await ctx.followup.send("✅ 邀请排名和排名角色已成功更新！", ephemeral=True)
+            await ctx.followup.send(ui_text(ctx,'legacy_007'), ephemeral=True)
             
         except Exception as e:
             logger.error(f"手动更新排名时出错: {str(e)}", exc_info=True)
-            await ctx.followup.send(f"❌ 更新排名时出错: {str(e)}", ephemeral=True)
+            await ctx.followup.send(ui_text(ctx,'legacy_022',v0=f'{str(e)}'), ephemeral=True)
 
-    @commands.command(name="myinvites", description="查看你的邀请次数")
+    @commands.command(name="myinvites", description=ui_text('English','cmd_invites'))
     async def my_invites(self, ctx):
         """查看自己的邀请次数和邀请排名"""
         if not config.LEGACY_RANKING_ENABLED:
@@ -825,41 +828,41 @@ class Social(commands.Cog):
             
             # 创建一个embed来显示用户邀请信息
             embed = discord.Embed(
-                title="📊 你的邀请统计",
-                description="感谢您邀请新用户加入我们的服务器！",
+                title=ui_text(ctx,'legacy_052'),
+                description=ui_text(ctx,'legacy_053'),
                 color=discord.Color.blue()
             )
             
-            embed.add_field(name="总邀请人数", value=f"**{invite_count}** 人", inline=True)
-            embed.add_field(name="已验证邀请人数", value=f"**{verified_invite_count}** 人", inline=True)
-            embed.add_field(name="当前积分", value=f"**{free_escrow_amount:.2f}** ", inline=True)
+            embed.add_field(name=ui_text(ctx,'legacy_054'), value=ui_text(ctx,'legacy_055',v0=f'{invite_count}'), inline=True)
+            embed.add_field(name=ui_text(ctx,'legacy_056'), value=ui_text(ctx,'legacy_055',v0=f'{verified_invite_count}'), inline=True)
+            embed.add_field(name=ui_text(ctx,'legacy_050'), value=f"**{free_escrow_amount:.2f}** ", inline=True)
             
             if user_rank:
-                embed.add_field(name="当前排名", value=f"**第 {user_rank} 名**", inline=True)
+                embed.add_field(name=ui_text(ctx,'legacy_073'), value=ui_text(ctx,'legacy_074',v0=f'{user_rank}'), inline=True)
                 
             else:
-                embed.add_field(name="当前排名", value="暂无排名", inline=True)
+                embed.add_field(name=ui_text(ctx,'legacy_073'), value=ui_text(ctx,'legacy_075'), inline=True)
             
             embed.add_field(
-                name="下一次奖励",
-                value=f"再邀请 **{next_reward}** 人获得验证可获得 **{config.INVITE_FREE_ESCROW_AMOUNT}**  积分",
+                name=ui_text(ctx,'legacy_057'),
+                value=ui_text(ctx,'legacy_058',v0=f'{next_reward}',v1=f'{config.INVITE_FREE_ESCROW_AMOUNT}'),
                 inline=False
             )
             
             # 添加如何邀请的提示
             embed.add_field(
-                name="💡 如何邀请更多用户",
-                value="点击邀请排行榜中的\"创建邀请链接\"按钮获取你的专属邀请链接，分享给好友即可。",
+                name=ui_text(ctx,'legacy_059'),
+                value=ui_text(ctx,'legacy_060'),
                 inline=False
             )
             
-            embed.set_footer(text="注：只有邀请的用户获得验证身份组后才会计入已验证邀请")
+            embed.set_footer(text=ui_text(ctx,'legacy_061'))
             
             await ctx.send(embed=embed)
             
         except Exception as e:
             logger.error(f"获取邀请信息时出错: {str(e)}", exc_info=True)
-            await ctx.send(f"❌ 获取邀请信息时出错，请稍后再试。")
+            await ctx.send(ui_text(ctx,'legacy_083'))
 
     async def my_invites_slash(self, ctx: ApplicationContext):
         """查看你的邀请次数（斜杠命令版本）。"""
@@ -882,7 +885,7 @@ class Social(commands.Cog):
             inviter_ranking = await database.get_inviter_ranking(user_id)
             total_inviters = await database.get_total_inviters_count()
             
-            rank_text = f"#{inviter_ranking}" if inviter_ranking else "未排名"
+            rank_text = f"#{inviter_ranking}" if inviter_ranking else ui_text(ctx,'legacy_075')
             
             # 获取用户的积分
             user = await database.get_user(user_id)
@@ -895,51 +898,48 @@ class Social(commands.Cog):
             
             # 创建嵌入消息
             embed = discord.Embed(
-                title="📊 您的邀请统计",
-                description=f"用户: {ctx.author.mention}",
+                title=ui_text(ctx,'legacy_062'),
+                description=ui_text(ctx,'legacy_063',v0=f'{ctx.author.mention}'),
                 color=discord.Color.blue()
             )
             
-            embed.add_field(name="总邀请数", value=str(total_invites), inline=True)
-            embed.add_field(name="已验证邀请", value=str(verified_invites), inline=True)
-            embed.add_field(name="排名", value=f"{rank_text} / {total_inviters}", inline=True)
+            embed.add_field(name=ui_text(ctx,'legacy_064'), value=str(total_invites), inline=True)
+            embed.add_field(name=ui_text(ctx,'legacy_065'), value=str(verified_invites), inline=True)
+            embed.add_field(name=ui_text(ctx,'legacy_066'), value=f"{rank_text} / {total_inviters}", inline=True)
             
             # 添加积分信息
             if free_escrow_amount > 0:
                 embed.add_field(
-                    name="积分", 
+                    name=ui_text(ctx,'legacy_076'), 
                     value=f"{free_escrow_amount}", 
                     inline=False
                 )
             
             # 添加邀请奖励信息
-            rewards_info = (
-                f"每成功邀请 {config.INVITE_FREE_ESCROW_THRESHOLD} 名用户加入并验证，"
-                f"您将获得 {config.INVITE_FREE_ESCROW_AMOUNT} 的积分！"
-            )
-            embed.add_field(name="邀请奖励", value=rewards_info, inline=False)
+            rewards_info = ui_text(ctx,'invite_reward_rule',count=config.INVITE_FREE_ESCROW_THRESHOLD,amount=config.INVITE_FREE_ESCROW_AMOUNT)
+            embed.add_field(name=ui_text(ctx,'legacy_067'), value=rewards_info, inline=False)
             
             # 添加排名身份组信息
             rank_roles_info = ""
             if config.TOP1_INVITER_ROLE_ID:
-                rank_roles_info += f"• 邀请第一名: <@&{config.TOP1_INVITER_ROLE_ID}>\n"
+                rank_roles_info += ui_text(ctx,'rank_role',rank=1,role=config.TOP1_INVITER_ROLE_ID)
             if config.TOP2_INVITER_ROLE_ID:
-                rank_roles_info += f"• 邀请第二名: <@&{config.TOP2_INVITER_ROLE_ID}>\n"
+                rank_roles_info += ui_text(ctx,'rank_role',rank=2,role=config.TOP2_INVITER_ROLE_ID)
             if config.TOP3_INVITER_ROLE_ID:
-                rank_roles_info += f"• 邀请第三名: <@&{config.TOP3_INVITER_ROLE_ID}>\n"
+                rank_roles_info += ui_text(ctx,'rank_role',rank=3,role=config.TOP3_INVITER_ROLE_ID)
                 
             if rank_roles_info:
-                embed.add_field(name="排名奖励身份组", value=rank_roles_info, inline=False)
+                embed.add_field(name=ui_text(ctx,'legacy_077'), value=rank_roles_info, inline=False)
             
             # 添加脚注
-            embed.set_footer(text="邀请排名每小时更新一次")
+            embed.set_footer(text=ui_text(ctx,'legacy_068'))
             
             # 发送消息
             await ctx.followup.send(embed=embed, ephemeral=True)
             
         except Exception as e:
             logger.error(f"处理my_invites_slash命令时出错: {str(e)}", exc_info=True)
-            await ctx.followup.send("获取邀请信息时出错，请稍后再试。", ephemeral=True)
+            await ctx.followup.send(ui_text(ctx,'legacy_084'), ephemeral=True)
 
     @commands.Cog.listener()
     async def on_member_join(self, member):
@@ -1172,19 +1172,19 @@ class Social(commands.Cog):
                     # 根据是否获得积分选择不同的消息内容
                     if is_new_booster or (boost_info and boost_info.get('last_credits_at') is None):
                         embed = discord.Embed(
-                            title="🎁 感谢boost服务器！",
-                            description=f"感谢您boost我们的服务器！\n\n作为感谢，您已收到 **{config.FREE_CREDITS_AMOUNT}** 的积分。",
+                            title=ui_text(after,'legacy_101'),
+                            description=ui_text(after,'legacy_102',v0=f'{config.FREE_CREDITS_AMOUNT}'),
                             color=discord.Color.nitro_pink()
                         )
                         embed.add_field(
-                            name="持续奖励", 
-                            value=f"只要您继续boost服务器，每30天都将获得 **{config.FREE_CREDITS_AMOUNT}** 的积分！", 
+                            name=ui_text(after,'legacy_103'), 
+                            value=ui_text(after,'legacy_104',v0=f'{config.FREE_CREDITS_AMOUNT}'), 
                             inline=False
                         )
                     else:
                         embed = discord.Embed(
-                            title="🎁 感谢boost服务器！",
-                            description=f"感谢您boost我们的服务器！",
+                            title=ui_text(after,'legacy_101'),
+                            description=ui_text(after,'legacy_105'),
                             color=discord.Color.nitro_pink()
                         )
                         
@@ -1195,12 +1195,12 @@ class Social(commands.Cog):
                             days_until_next = max(0, (next_credits_date - datetime.now()).days)
                             
                             embed.add_field(
-                                name="下次积分", 
-                                value=f"您将在 **{days_until_next}** 天后获得下一次积分奖励。", 
+                                name=ui_text(after,'legacy_115'), 
+                                value=ui_text(after,'legacy_116',v0=f'{days_until_next}'), 
                                 inline=False
                             )
                     
-                    embed.set_footer(text=f"当前总积分: {current_free_escrow}")
+                    embed.set_footer(text=ui_text(after,'legacy_085',v0=f'{current_free_escrow}'))
                     
                     # 记录发送DM前的日志
                     logger.info(f"尝试向用户 {after.id} ({after.name}) 发送boost开始DM通知...")
@@ -1236,8 +1236,8 @@ class Social(commands.Cog):
                 # 可以选择给用户发送DM提醒
                 try:
                     embed = discord.Embed(
-                        title="💔 server boost结束通知",
-                        description="我们注意到您不再boost我们的服务器。\n\n感谢您之前的支持！如果您再次boost服务器，将继续获得积分。",
+                        title=ui_text(after,'legacy_106'),
+                        description=ui_text(after,'legacy_107'),
                         color=discord.Color.dark_grey()
                     )
                     
@@ -1294,8 +1294,8 @@ class Social(commands.Cog):
         
         # 创建排名嵌入消息
         embed = discord.Embed(
-            title="🏆 邀请排行榜",
-            description="邀请新用户加入服务器并获得验证的排名",
+            title=ui_text(self.bot.get_guild(config.GUILD_ID),'legacy_043'),
+            description=ui_text(self.bot.get_guild(config.GUILD_ID),'legacy_044'),
             color=discord.Color.gold()
         )
         
@@ -1324,19 +1324,19 @@ class Social(commands.Cog):
             rank_emoji = "🥇" if i == 0 else "🥈" if i == 1 else "🥉" if i == 2 else f"{i+1}."
             
             embed.add_field(
-                name=f"{rank_emoji} 排名",
-                value=f"{user_display}\n已验证邀请: **{inviter['invite_count']}**",
+                name=ui_text(self.bot.get_guild(config.GUILD_ID),'legacy_069',v0=f'{rank_emoji}'),
+                value=ui_text(self.bot.get_guild(config.GUILD_ID),'legacy_070',v0=f'{user_display}',v1=f"{inviter['invite_count']}"),
                 inline=False
             )
         
         # 添加页脚
-        embed.set_footer(text=f"上次更新: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        embed.set_footer(text=ui_text(self.bot.get_guild(config.GUILD_ID),'legacy_045',v0=f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"))
         
         # 创建查看我的邀请按钮
         view = discord.ui.View(timeout=None)
         my_invites_button = discord.ui.Button(
             style=discord.ButtonStyle.primary,
-            label="查看我的邀请人数", 
+            label=ui_text(self.bot.get_guild(config.GUILD_ID),'legacy_046'), 
             emoji="👥",
             custom_id="my_invites_button"
         )
@@ -1345,7 +1345,7 @@ class Social(commands.Cog):
         # 添加刷新奖励按钮
         refresh_rewards_button = discord.ui.Button(
             style=discord.ButtonStyle.success,
-            label="刷新我的奖励", 
+            label=ui_text(self.bot.get_guild(config.GUILD_ID),'legacy_047'), 
             emoji="🔄",
             custom_id="refresh_rewards_button"
         )
@@ -1354,7 +1354,7 @@ class Social(commands.Cog):
         # 添加创建邀请链接按钮
         create_invite_button = discord.ui.Button(
             style=discord.ButtonStyle.primary,
-            label="创建邀请链接",
+            label=ui_text(self.bot.get_guild(config.GUILD_ID),'legacy_048'),
             emoji="📨",
             custom_id="create_invite_button"
         )
@@ -1477,36 +1477,36 @@ class Social(commands.Cog):
                 
                 # 创建回复嵌入消息
                 embed = discord.Embed(
-                    title="📊 您的邀请统计",
-                    description=f"感谢您邀请新用户加入我们的服务器！",
+                    title=ui_text(interaction,'legacy_062'),
+                    description=ui_text(interaction,'legacy_053'),
                     color=discord.Color.blue()
                 )
                 
                 embed.add_field(
-                    name="总邀请人数",
-                    value=f"**{invite_count}** 人",
+                    name=ui_text(interaction,'legacy_054'),
+                    value=ui_text(interaction,'legacy_055',v0=f'{invite_count}'),
                     inline=True
                 )
                 
                 embed.add_field(
-                    name="已验证邀请人数",
-                    value=f"**{verified_invite_count}** 人",
+                    name=ui_text(interaction,'legacy_056'),
+                    value=ui_text(interaction,'legacy_055',v0=f'{verified_invite_count}'),
                     inline=True
                 )
                 
                 embed.add_field(
-                    name="当前积分",
+                    name=ui_text(interaction,'legacy_050'),
                     value=f"**{free_escrow_amount:.2f}** ",
                     inline=True
                 )
                 
                 embed.add_field(
-                    name="下一次奖励",
-                    value=f"再邀请 **{next_reward}** 人获得验证可获得 **{config.INVITE_FREE_ESCROW_AMOUNT}**  积分",
+                    name=ui_text(interaction,'legacy_057'),
+                    value=ui_text(interaction,'legacy_058',v0=f'{next_reward}',v1=f'{config.INVITE_FREE_ESCROW_AMOUNT}'),
                     inline=False
                 )
                 
-                embed.set_footer(text="注：只有邀请的用户获得验证身份组后才会计入已验证邀请")
+                embed.set_footer(text=ui_text(interaction,'legacy_061'))
                 
                 # 发送私密回复
                 await interaction.followup.send(embed=embed, ephemeral=True)
@@ -1521,7 +1521,7 @@ class Social(commands.Cog):
                 # 获取用户当前状态
                 old_user = await database.get_user(user_id)
                 if not old_user:
-                    await interaction.followup.send("❌ 你的用户信息不存在，请先使用邀请功能。", ephemeral=True)
+                    await interaction.followup.send(ui_text(interaction,'legacy_117'), ephemeral=True)
                     return
                     
                 old_amount = old_user.get('free_escrow_amount', 0.0)
@@ -1549,7 +1549,7 @@ class Social(commands.Cog):
                 # 获取更新后的状态
                 new_user = await database.get_user(user_id)
                 if not new_user:
-                    await interaction.followup.send("❌ 刷新后无法获取你的用户信息，请联系管理员。", ephemeral=True)
+                    await interaction.followup.send(ui_text(interaction,'legacy_118'), ephemeral=True)
                     return
                     
                 new_amount = new_user.get('free_escrow_amount', 0.0)
@@ -1573,7 +1573,7 @@ class Social(commands.Cog):
                 
                 # 创建嵌入消息
                 embed = discord.Embed(
-                    title="🎁 邀请奖励刷新结果",
+                    title=ui_text(interaction,'legacy_086'),
                     color=discord.Color.green() if new_amount > old_amount else discord.Color.blue()
                 )
                 
@@ -1586,27 +1586,27 @@ class Social(commands.Cog):
                 next_reward = threshold - (verified_invite_count % threshold) if verified_invite_count % threshold != 0 else threshold
                 
                 embed.add_field(
-                    name="邀请统计",
-                    value=f"总邀请: **{invite_count}** 人\n已验证邀请: **{verified_invite_count}** 人",
+                    name=ui_text(interaction,'legacy_087'),
+                    value=ui_text(interaction,'legacy_088',v0=f'{invite_count}',v1=f'{verified_invite_count}'),
                     inline=False
                 )
                 
                 embed.add_field(
-                    name="奖励更新",
-                    value=f"原积分: **{old_amount:.2f}** \n现积分: **{new_amount:.2f}** \n增加积分: **{new_amount - old_amount:.2f}** ",
+                    name=ui_text(interaction,'legacy_089'),
+                    value=ui_text(interaction,'legacy_090',v0=f'{old_amount:.2f}',v1=f'{new_amount:.2f}',v2=f'{new_amount - old_amount:.2f}'),
                     inline=False
                 )
                 
                 if new_amount > old_amount:
                     embed.add_field(
-                        name="✅ 奖励发放成功",
-                        value=f"你获得了额外的积分！",
+                        name=ui_text(interaction,'legacy_108'),
+                        value=ui_text(interaction,'legacy_109'),
                         inline=False
                     )
                 else:
                     embed.add_field(
-                        name="ℹ️ 奖励已是最新",
-                        value=f"你已经获得了所有应得的奖励。再邀请 **{next_reward}** 人获得验证可获得 **{config.INVITE_FREE_ESCROW_AMOUNT}**  积分。",
+                        name=ui_text(interaction,'legacy_110'),
+                        value=ui_text(interaction,'legacy_111',v0=f'{next_reward}',v1=f'{config.INVITE_FREE_ESCROW_AMOUNT}'),
                         inline=False
                     )
                 
@@ -1661,8 +1661,7 @@ class Social(commands.Cog):
                                         
                                         if valid_invite:
                                             await interaction.followup.send(
-                                                f"您已有一个有效的邀请链接: {valid_invite.url}\n"
-                                                f"每用户只能创建一个永久邀请链接。每邀请一个新用户加入，您将获得奖励！", 
+                                                ui_text(interaction,'legacy_121',v0=f'{valid_invite.url}'), 
                                                 ephemeral=True
                                             )
                                             logger.info(f"向用户 {user_id} 返回了现有邀请 {valid_invite.url}，拒绝创建新邀请")
@@ -1673,8 +1672,7 @@ class Social(commands.Cog):
                                     # 如果验证失败或邀请无效，仍然返回该邀请链接
                                     invite_url = f"https://discord.gg/{invite_code}"
                                     await interaction.followup.send(
-                                        f"您已有一个邀请链接: {invite_url}\n"
-                                        f"每用户只能创建一个永久邀请链接。如果此链接已失效，请联系管理员。", 
+                                        ui_text(interaction,'legacy_120',v0=f'{invite_url}'), 
                                         ephemeral=True
                                     )
                                     logger.info(f"向用户 {user_id} 返回了现有邀请 {invite_url}，拒绝创建新邀请")
@@ -1687,7 +1685,7 @@ class Social(commands.Cog):
                         # 出错时，保险起见，阻止创建新邀请
                         try:
                             await interaction.followup.send(
-                                "验证您的邀请状态时出错，请稍后再试。如需帮助，请联系管理员。", 
+                                ui_text(interaction,'legacy_112'), 
                                 ephemeral=True
                             )
                             return
@@ -1720,8 +1718,7 @@ class Social(commands.Cog):
                         # 发送邀请链接给用户
                         try:
                             await interaction.followup.send(
-                                f"您的专属邀请链接已创建: {invite.url}\n"
-                                f"每用户只能创建一个永久邀请链接。每邀请一个新用户加入，您将获得奖励！", 
+                                ui_text(interaction,'legacy_100',v0=f'{invite.url}'), 
                                 ephemeral=True
                             )
                             logger.info(f"已发送邀请链接给用户 {user_id}")
@@ -1761,7 +1758,7 @@ class Social(commands.Cog):
                     except Exception as e:
                         logger.error(f"创建邀请链接时出错: {str(e)}", exc_info=True)
                         try:
-                            await interaction.followup.send("创建邀请链接时出错，请稍后再试。", ephemeral=True)
+                            await interaction.followup.send(ui_text(interaction,'legacy_113'), ephemeral=True)
                         except:
                             pass
                             
@@ -1770,9 +1767,9 @@ class Social(commands.Cog):
                     try:
                         # 尝试发送错误消息
                         if not interaction.response.is_done():
-                            await interaction.response.send_message("处理您的请求时出错，请稍后再试。", ephemeral=True)
+                            await interaction.response.send_message(ui_text(interaction,'legacy_114'), ephemeral=True)
                         else:
-                            await interaction.followup.send("处理您的请求时出错，请稍后再试。", ephemeral=True)
+                            await interaction.followup.send(ui_text(interaction,'legacy_114'), ephemeral=True)
                     except Exception as inner_e:
                         logger.error(f"在处理错误时发生额外错误: {str(inner_e)}")
                         
@@ -1781,9 +1778,9 @@ class Social(commands.Cog):
             # 尝试发送错误消息
             try:
                 if not interaction.response.is_done():
-                    await interaction.response.send_message("查询邀请统计时出错，请稍后再试。", ephemeral=True)
+                    await interaction.response.send_message(ui_text(interaction,'legacy_119'), ephemeral=True)
                 else:
-                    await interaction.followup.send("查询邀请统计时出错，请稍后再试。", ephemeral=True)
+                    await interaction.followup.send(ui_text(interaction,'legacy_119'), ephemeral=True)
             except Exception as send_error:
                 logger.error(f"尝试发送错误消息时出错: {str(send_error)}")
 
@@ -1869,12 +1866,12 @@ class Social(commands.Cog):
                         # 尝试给用户发送DM通知
                         try:
                             embed = discord.Embed(
-                                title="🎁 收到积分！",
-                                description=f"感谢您对服务器的boost支持！\n\n您已收到 **{config.FREE_CREDITS_AMOUNT}** 的积分作为感谢。",
+                                title=ui_text(member,'legacy_095'),
+                                description=ui_text(member,'legacy_096',v0=f'{config.FREE_CREDITS_AMOUNT}'),
                                 color=discord.Color.nitro_pink()
                             )
-                            embed.add_field(name="下次发放", value="下一次积分将在30天后发放。", inline=False)
-                            embed.set_footer(text=f"当前总积分: {new_free_escrow}")
+                            embed.add_field(name=ui_text(member,'legacy_097'), value=ui_text(member,'legacy_098'), inline=False)
+                            embed.set_footer(text=ui_text(member,'legacy_085',v0=f'{new_free_escrow}'))
                             
                             # 记录发送DM前的日志
                             logger.info(f"尝试向用户 {user_id} ({username}) 发送定期boost奖励DM通知...")
@@ -1910,7 +1907,9 @@ class Social(commands.Cog):
     
     @discord.slash_command(
         name="查询积分",
-        description="查看你的Server BOOST状态和积分"
+        description=ui_text('English','cmd_credits'),
+        description_localizations=ui_localizations('cmd_credits'),
+        name_localizations=ui_command_names('cmd_credits'),
     )
     async def check_boost_credits_slash(self, ctx: ApplicationContext):
         """查看当前服务器boost状态和积分。"""
@@ -1930,7 +1929,7 @@ class Social(commands.Cog):
                 free_escrow_amount = 0.0
         
         embed = discord.Embed(
-            title="🚀 服务器boost状态",
+            title=ui_text(ctx,'legacy_049'),
             color=discord.Color.nitro_pink()
         )
         
@@ -1944,7 +1943,7 @@ class Social(commands.Cog):
             logger.warning(f"无法检查用户 {user_id} 的boost状态: guild对象为None")
         
         if is_booster:
-            embed.description = "✅ 您当前是服务器的boost用户！"
+            embed.description = ui_text(ctx,'boost_active')
             
             if boost_info:
                 # 计算下次获得积分的时间
@@ -1954,40 +1953,38 @@ class Social(commands.Cog):
                     days_left = (next_credits_date - datetime.now()).days
                     
                     embed.add_field(
-                        name="boost状态", 
-                        value=f"首次boost: {boost_info['first_boost_at'].strftime('%Y-%m-%d')}\n"
-                              f"boost次数: {boost_info['boost_count']}",
+                        name=ui_text(ctx,'legacy_091'), 
+                        value=ui_text(ctx,'legacy_092',v0=f"{boost_info['first_boost_at'].strftime('%Y-%m-%d')}",v1=f"{boost_info['boost_count']}"),
                         inline=False
                     )
                     
                     embed.add_field(
-                        name="积分状态", 
-                        value=f"上次获得: {last_credits_at.strftime('%Y-%m-%d')}\n"
-                              f"下次获得: {next_credits_date.strftime('%Y-%m-%d')} (还有 {days_left} 天)",
+                        name=ui_text(ctx,'legacy_078'), 
+                        value=ui_text(ctx,'legacy_093',v0=f"{last_credits_at.strftime('%Y-%m-%d')}",v1=f"{next_credits_date.strftime('%Y-%m-%d')}",v2=f'{days_left}'),
                         inline=False
                     )
                 else:
                     embed.add_field(
-                        name="积分状态", 
-                        value="您还未获得过积分，系统将很快发放！",
+                        name=ui_text(ctx,'legacy_078'), 
+                        value=ui_text(ctx,'legacy_094'),
                         inline=False
                     )
             else:
                 embed.add_field(
-                    name="积分状态", 
-                    value="系统将很快为您注册并发放积分！",
+                    name=ui_text(ctx,'legacy_078'), 
+                    value=ui_text(ctx,'legacy_079'),
                     inline=False
                 )
         else:
-            embed.description = "❌ 您当前不是服务器的boost用户"
+            embed.description = ui_text(ctx,'boost_inactive')
             embed.add_field(
-                name="如何获得积分", 
-                value=f"成为服务器boost用户后，您每30天可获得 **{config.FREE_CREDITS_AMOUNT}** 的积分！",
+                name=ui_text(ctx,'legacy_071'), 
+                value=ui_text(ctx,'legacy_072',v0=f'{config.FREE_CREDITS_AMOUNT}'),
                 inline=False
             )
         
         embed.add_field(
-            name="当前积分", 
+            name=ui_text(ctx,'legacy_050'), 
             value=f"**{free_escrow_amount}**",
             inline=False
         )
@@ -2168,12 +2165,12 @@ class Social(commands.Cog):
                 # 尝试给用户发送DM通知
                 try:
                     embed = discord.Embed(
-                        title="🎁 收到积分！",
-                        description=f"感谢您对服务器的boost支持！\n\n您已收到 **{FREE_CREDITS_AMOUNT}** 的积分作为感谢。",
+                        title=ui_text(member,'legacy_095'),
+                        description=ui_text(member,'legacy_096',v0=f'{FREE_CREDITS_AMOUNT}'),
                         color=discord.Color.nitro_pink()
                     )
-                    embed.add_field(name="下次发放", value="下一次积分将在30天后发放。", inline=False)
-                    embed.set_footer(text=f"当前总积分: {new_free_escrow}")
+                    embed.add_field(name=ui_text(member,'legacy_097'), value=ui_text(member,'legacy_098'), inline=False)
+                    embed.set_footer(text=ui_text(member,'legacy_085',v0=f'{new_free_escrow}'))
                     
                     # 记录发送DM前的日志
                     logger.info(f"尝试向用户 {user_id} ({username}) 发送定期boost奖励DM通知...")
@@ -2203,15 +2200,19 @@ class Social(commands.Cog):
 
     @discord.slash_command(
         name="检查发放助力积分",
-        description="立即检查并向符合条件的boost用户发放积分（仅限管理员）",
+        description=ui_text('English','cmd_grant_boost'),
         guild_ids=[config.GUILD_ID],
-        default_member_permissions=discord.Permissions(administrator=True)
+        default_member_permissions=discord.Permissions(administrator=True),
+        description_localizations=ui_localizations('cmd_grant_boost'),
+        name_localizations=ui_command_names('cmd_grant_boost'),
     )
     async def check_and_grant_boost_credits(self, ctx: ApplicationContext):
         """立即检查并向符合条件的boost用户发放积分。"""
         # 权限检查
-        if not ctx.author.guild_permissions.administrator and not any(role.id in [config.ADMIN_ROLE_ID, config.MODERATOR_ROLE_ID] for role in ctx.author.roles):
-            await ctx.respond("您没有权限执行此命令", ephemeral=True)
+        if (not ctx.guild or ctx.guild.id!=config.GUILD_ID or
+                (not ctx.author.guild_permissions.administrator and
+                 not has_configured_role(ctx.author,(config.ADMIN_ROLE_ID,config.MODERATOR_ROLE_ID),ctx.guild.id))):
+            await ctx.respond(ui_text(ctx,'legacy_080'), ephemeral=True)
             return
         
         await ctx.defer(ephemeral=True)
@@ -2225,10 +2226,10 @@ class Social(commands.Cog):
             # 执行一次性的boost奖励发放
             await self.update_booster_rewards_once()
             
-            await ctx.followup.send("✅ 已成功检查并发放符合条件的boost用户积分！", ephemeral=True)
+            await ctx.followup.send(ui_text(ctx,'legacy_081'), ephemeral=True)
         except Exception as e:
             logger.error(f"手动检查boost用户积分时出错: {str(e)}", exc_info=True)
-            await ctx.followup.send(f"❌ 检查过程中出错: {str(e)}", ephemeral=True)
+            await ctx.followup.send(ui_text(ctx,'legacy_099',v0=f'{str(e)}'), ephemeral=True)
 
 def setup(bot):
     """加载社交功能组件。"""

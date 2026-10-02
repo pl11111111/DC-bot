@@ -1,6 +1,7 @@
 """Authorize a new-guild payout from its own durable deposit, never account balance."""
 import json
 import re
+from datetime import datetime
 from decimal import Decimal
 import config
 from utils import new_store as db
@@ -52,16 +53,21 @@ async def authorize(cur,key,address,gross,fee,net):
 
 async def freeze(key,reason,item):
     # A persistent latch: a restart must not silently resume automatic payouts.
-    await db.query("INSERT INTO payment_settings(setting_key,value) VALUES('payout_freeze',%s) ON DUPLICATE KEY UPDATE value=%s",
-                   (db.encode({'order':key,'reason':reason}),db.encode({'order':key,'reason':reason})),shared=True)
-    await db.query("UPDATE payouts SET state='review',payload=%s WHERE order_key=%s",(db.encode(item),key),shared=True)
+    async with db.transaction(True) as cur:
+        await cur.execute("INSERT INTO payment_settings(setting_key,value) VALUES('payout_freeze',%s) ON DUPLICATE KEY UPDATE value=%s",
+                          (db.encode({'order':key,'reason':reason}),db.encode({'order':key,'reason':reason})))
+        await cur.execute("UPDATE payouts SET state='review',payload=%s WHERE state<>'manual_refunded' AND order_key=%s",(db.encode(item),key))
 
 
 def check_result(row,item,snapshot):
     if not snapshot:
         raise ValueError('缺少放款额度快照，需人工核对历史提现')
-    if item.get('coin')!='USDT' or item.get('network')!='BSC' or item.get('address')!=row['address']:
+    if item.get('coin')!='USDT' or item.get('network')!='BSC' or str(item.get('address','')).lower()!=row['address'].lower():
         raise ValueError('提现币种、网络或地址不符')
+    if (not isinstance(item.get('txId'),str) or not item['txId'].strip()
+            or not isinstance(item.get('completeTime'),str) or not item['completeTime']):
+        raise ValueError('已完成提现缺少交易流水或完成时间，需人工核对')
+    datetime.fromisoformat(item['completeTime'].replace('Z','+00:00'))
     amount=Decimal(str(item.get('amount','NaN')))
     fee=Decimal(str(item.get('transactionFee','NaN')))
     if not amount.is_finite() or not fee.is_finite() or amount<=0 or fee<0:

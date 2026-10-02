@@ -20,6 +20,12 @@ def privileged_role(role):
     return any(getattr(role.permissions, name, False) for name in PRIVILEGED_PERMISSIONS)
 
 
+def has_configured_role(member, role_ids, guild_id):
+    """A mistaken @everyone ID must never authorize an administrative action."""
+    allowed={ident for ident in role_ids if ident and ident!=guild_id}
+    return bool(guild_id and any(role.id in allowed for role in member.roles))
+
+
 def redact(value):
     text = str(value)
     # Include configured secrets even if a library logs them without field names.

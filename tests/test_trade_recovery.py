@@ -60,7 +60,7 @@ class RecoveryTests(unittest.IsolatedAsyncioTestCase):
         with patch('modules.new_trading.db.setting',AsyncMock(return_value=None)):
             await self.cog.deposit_status_notice(self.row,DepositNotReady(7))
         self.cog.alert.assert_awaited_once()
-        self.assertIn('状态 7',self.cog.alert.await_args.args[0])
+        self.assertIn('Deposit status: 7',self.cog.alert.await_args.args[0])
 
     async def test_pending_deposit_worker_cannot_mark_paid_or_timeout(self):
         from utils.shared_payments import DepositNotReady

@@ -37,6 +37,15 @@ class MoneyTests(unittest.TestCase):
         with self.assertRaises(ValueError): embeds('title','body','file:///private')
 
 class PayoutTests(unittest.IsolatedAsyncioTestCase):
+    async def test_refund_limit_includes_service_fee_and_invoice_tail(self):
+        network=dict(withdrawFee='.01',withdrawIntegerMultiple='.000001',withdrawMin='1',withdrawMax='2000000')
+        with patch.object(p,'withdrawal_network',AsyncMock(return_value=network)):
+            fee,net=await p.payout_amount_quote(Decimal('1000002.009999'))
+            self.assertEqual(net+fee,Decimal('1000002.009999'))
+            with self.assertRaises(ValueError):
+                await p.payout_amount_quote(Decimal('1000002.010000'))
+        with self.assertRaises(ValueError): p.trade_price('1000000.01')
+
     async def test_previously_claimed_deposit_does_not_call_exchange(self):
         query=AsyncMock(side_effect=[{'state':'received','address':'address','amount':100}, {'txid':'recorded-transfer'}])
         request=AsyncMock()
@@ -229,7 +238,8 @@ class TradeCommandPermissionTests(unittest.IsolatedAsyncioTestCase):
             for command,args in cases:
                 ctx=NS(guild=guild,author=NS(guild_permissions=NS(administrator=administrator),roles=[]),respond=AsyncMock(),defer=AsyncMock())
                 await getattr(command,'callback',command)(cog,ctx,order_id='order',**args)
-                ctx.respond.assert_awaited_once_with('没有操作权限。',ephemeral=True)
+                from utils.ui_language import text
+                ctx.respond.assert_awaited_once_with(text(ctx,'legacy_006'),ephemeral=True)
                 ctx.defer.assert_not_awaited()
 
     async def test_global_check_preserves_configured_admin_roles(self):

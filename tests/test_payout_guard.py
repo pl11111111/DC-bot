@@ -61,10 +61,12 @@ class BudgetTests(unittest.TestCase):
 
     def test_history_fee_and_amount_limits(self):
         row={'address':'addr'}
-        item={'address':'addr','coin':'USDT','network':'BSC','amount':'99','transactionFee':'1'}
+        item={'address':'addr','coin':'USDT','network':'BSC','amount':'99','transactionFee':'1',
+              'txId':'confirmed-transfer','completeTime':'2026-10-01 00:00:00'}
         snapshot={'cap':'100','net':'99','fee':'1'}
         g.check_result(row,item,snapshot)
-        for change in ({'amount':'100'},{'transactionFee':'2'},{'coin':'BTC'},{'amount':'98'},{'transactionFee':None}):
+        for change in ({'amount':'100'},{'transactionFee':'2'},{'coin':'BTC'},{'amount':'98'},{'transactionFee':None},
+                       {'txId':''},{'completeTime':None},{'completeTime':'invalid'}):
             with self.assertRaises((ValueError,ArithmeticError)):
                 g.check_result(row,{**item,**change},snapshot)
 
