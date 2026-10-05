@@ -16,7 +16,7 @@ from modules.new_community import buttons, admin, texts
 cfg=config.NEW
 log=logging.getLogger(__name__)
 from utils.trade_states import TERMINAL, TERMINAL_SQL, AUTO_CLEANUP, IDLE_SECONDS
-from utils import trade_idle, trade_admission
+from utils import trade_idle, trade_admission, trade_images
 from utils.ui_language import localizations as ui_localizations, choice as ui_choice, decision_choices as ui_decision_choices
 from utils.ui_language import text as ui_text, error as ui_error, participants as ui_participants, participant_text as ui_participant_text, decision as ui_decision
 from utils.trade_private import text as private_text
@@ -114,7 +114,7 @@ class NewTrading(commands.Cog):
             options=[(button_label(action,row),action) for _,action in options]
         return buttons([(label,'trade:'+action+':'+ident) for label,action in options])
 
-    async def send_step(self,channel,status,embed=None,view=None,qr_file=None):
+    async def send_step(self,channel,status,embed=None,view=None,qr_file=None,item_file=None,image_description=''):
         """Attach a local banner above the body, only inside an order channel."""
         if channel.guild.id!=cfg.GUILD_ID:
             return
@@ -126,6 +126,8 @@ class NewTrading(commands.Cog):
             except OSError:
                 log.exception('Trade banner unavailable: %s',filename)
         try:
+            if item_file is not None:
+                return await trade_card.send(channel,embed,view,file,qr_file,item_file,image_description)
             if qr_file is not None:
                 return await trade_card.send(channel,embed,view,file,qr_file)
             return await trade_card.send(channel,embed,view,file)
@@ -208,13 +210,21 @@ class NewTrading(commands.Cog):
         embed=trade_language.localize_embed(embed,row)
         key='trade_panel:'+row['id']
         previous=await db.setting(key)
+        item_file=None
         try:
-            if qr_file is not None:
+            item_file=trade_images.file(await db.setting('trade_image:'+row['id']))
+            if item_file is not None:
+                image_description=' / '.join(ui_text(lang,'image_alt') for lang in row['_languages'])
+                message=await self.send_step(channel,row['status'],embed,self.view(row),qr_file,item_file,image_description)
+            elif qr_file is not None:
                 message=await self.send_step(channel,row['status'],embed,self.view(row),qr_file)
             else:
                 message=await self.send_step(channel,row['status'],embed,self.view(row))
         finally:
             if qr_file is not None: qr_file.close()
+            if item_file is not None:
+                item_file.close()
+                item_file.fp.close()
         if message:
             await db.setting(key,{'message':message.id,'channel':channel.id,'status':row['status']})
             await self.deliver_step_notification(channel,row)
@@ -280,14 +290,20 @@ class NewTrading(commands.Cog):
         if not cfg.PAYMENTS_ENABLED:
             msg=private_ui.text(user,'disabled')
             return await ctx.respond(msg,ephemeral=True) if hasattr(ctx,'respond') else await ctx.response.send_message(msg,ephemeral=True)
-        modal=discord.ui.Modal(title=private_ui.text(user,'form'))
-        item=discord.ui.InputText(label=private_ui.text(user,'item'),max_length=150)
-        amount=discord.ui.InputText(label=private_ui.text(user,'amount'),placeholder='10.50',max_length=20)
-        terms=discord.ui.InputText(label=private_ui.text(user,'terms'),style=discord.InputTextStyle.long,max_length=1500,required=False)
-        for field in (item,amount,terms): modal.add_item(field)
+        modal=discord.ui.DesignerModal(title=private_ui.text(user,'form'))
+        item=discord.ui.InputText(max_length=150)
+        amount=discord.ui.InputText(placeholder='10.50',max_length=20)
+        terms=discord.ui.InputText(style=discord.InputTextStyle.long,max_length=1500,required=False)
+        for key,field in (('item',item),('amount',amount),('terms',terms)):
+            modal.add_item(discord.ui.Label(private_ui.text(user,key),item=field))
+        picture=discord.ui.FileUpload(min_values=0,max_values=1,required=False)
+        modal.add_item(discord.ui.Label(ui_text(user,'image_label'),item=picture,description=ui_text(user,'image_hint')))
         used=False
         async def submitted(inter):
             nonlocal used
+            # Snapshot before awaiting: gateway refreshes must not replace this submission.
+            submitted_item,submitted_amount,submitted_terms=item.value,amount.value,terms.value or ''
+            submitted_pictures=tuple(picture.values or ())
             await inter.response.defer(ephemeral=True)
             channel=None
             try:
@@ -295,8 +311,11 @@ class NewTrading(commands.Cog):
                     raise ValueError('仅发起者可在原社群提交此表单')
                 if used:
                     return await inter.followup.send(private_ui.text(inter.user,'stale'),ephemeral=True)
-                value=payments.trade_price(amount.value)
+                value=payments.trade_price(submitted_amount)
+                if not submitted_item or len(submitted_item)>150 or len(submitted_terms)>1500:
+                    raise ValueError('Invalid trade details')
                 used=True
+                image=await trade_images.prepare(submitted_pictures,actor=(guild.id,user.id))
                 await payments.payout_amount_quote(value)
                 member=await guild.fetch_member(other.id)
                 initiator=await guild.fetch_member(user.id)
@@ -313,7 +332,10 @@ class NewTrading(commands.Cog):
                 async with db.transaction() as cur:
                     await trade_admission.reserve(cur,user.id,other.id)
                     await cur.execute('INSERT INTO orders(id,buyer_id,seller_id,initiator_id,source_id,item,terms,amount,fee) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s)',
-                                      (ident,buyer,seller,user.id,source,item.value,terms.value or '',value,cfg.FEE))
+                                      (ident,buyer,seller,user.id,source,submitted_item,submitted_terms,value,cfg.FEE))
+                    if image:
+                        await cur.execute('INSERT INTO settings(setting_key,value) VALUES(%s,%s)',
+                                          ('trade_image:'+ident,db.encode(image)))
                 overwrites={guild.default_role:discord.PermissionOverwrite(view_channel=False),guild.me:discord.PermissionOverwrite(view_channel=True,send_messages=True,read_message_history=True),initiator:discord.PermissionOverwrite(view_channel=True,send_messages=True,read_message_history=True),member:discord.PermissionOverwrite(view_channel=True,send_messages=True,read_message_history=True)}
                 for rid in cfg.TRADE_ADMIN_ROLES:
                     role=guild.get_role(rid)
@@ -325,10 +347,12 @@ class NewTrading(commands.Cog):
                 except Exception:
                     await self.transition(ident,'pending','cancelled',user.id,{'reason':'channel creation/setup failed'})
                     raise
-                await db.audit(user.id,'create',{'terms':terms.value,'source':source},ident)
+                await db.audit(user.id,'create',{'terms':submitted_terms,'source':source,'image_sha256':image['sha256'] if image else None},ident)
                 await self.post(await self.order(ident))
                 # The durable notification worker retries participant mentions after failures.
                 await inter.followup.send(private_ui.text(inter.user,'created',channel=channel.mention),ephemeral=True)
+            except trade_images.ImageRejected as exc:
+                await inter.followup.send(ui_text(inter.user,exc.key),ephemeral=True)
             except ValueError as exc:
                 await inter.followup.send(private_ui.error(inter.user,exc),ephemeral=True)
             except Exception:

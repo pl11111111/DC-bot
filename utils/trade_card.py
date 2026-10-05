@@ -6,7 +6,7 @@ from discord.http import Route
 V2=1 << 15
 
 
-def components(embed,view,has_banner,has_qr=False):
+def components(embed,view,has_banner,has_qr=False,has_item=False,image_description=''):
     children=[]
     qr={'type':12,'items':[{'media':{'url':'attachment://payment-qr.png'},'description':'USDT-BEP20 收款地址二维码；请自行核对币种、网络和实际到账金额。'}]}
     if has_banner:
@@ -32,13 +32,16 @@ def components(embed,view,has_banner,has_qr=False):
                 flush()
                 body.append(f'**{field.name}**\n{field.value}')
         flush()
-        if embed.footer.text: body.append('-# '+embed.footer.text)
+        if embed.footer and embed.footer.text: body.append('-# '+embed.footer.text)
         text='\n\n'.join(body)
         if len(text)>4000:
             raise ValueError('交易卡片文字超过 Discord 限制，请缩短内容')
         if text: children.append({'type':10,'content':text})
     elif has_qr:
         children.append(qr)
+    if has_item:
+        if image_description:children.append({'type':10,'content':'-# '+image_description})
+        children.append({'type':12,'items':[{'media':{'url':'attachment://trade-item.jpg'},'description':image_description}]})
     if sum(len(child['content']) for child in children if child['type']==10)>4000:
         raise ValueError('交易卡片文字超过 Discord 限制，请缩短内容')
     if view and view.children:
@@ -47,12 +50,12 @@ def components(embed,view,has_banner,has_qr=False):
     return [{'type':17,'accent_color':0x9854DE,'components':children}] if children else []
 
 
-async def send(channel,embed,view,file,qr_file=None):
-    layout=components(embed,view,file is not None,qr_file is not None)
+async def send(channel,embed,view,file,qr_file=None,item_file=None,image_description=''):
+    layout=components(embed,view,file is not None,qr_file is not None,item_file is not None,image_description)
     if not layout: return
     # Use py-cord's authenticated, rate-limited HTTP client and multipart uploader.
     # No dependency upgrade or global change to legacy message handling is needed.
-    data=await channel._state.http.send_files(channel.id,files=[f for f in (file,qr_file) if f is not None],
+    data=await channel._state.http.send_files(channel.id,files=[f for f in (file,qr_file,item_file) if f is not None],
         components=layout,flags=V2,allowed_mentions={'parse':[]})
     return SimpleNamespace(id=int(data['id']))
 

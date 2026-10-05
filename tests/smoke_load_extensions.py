@@ -16,7 +16,8 @@ class LoadTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('NewModeration',bot.cogs)
         self.assertIn('NewTrading',bot.cogs)
         self.assertIn('NewCommunity',bot.cogs)
-        right_click=[c for c in bot.pending_application_commands if c.name in ('开始交易(buy)','开始交易(sell)')]
+        from utils.ui_language import text
+        right_click=[c for c in bot.pending_application_commands if c.name in (text('English','context_buy'),text('English','context_sell'))]
         self.assertEqual(len(right_click),2)
         self.assertTrue(all(c.guild_ids==[2] for c in right_click))
         for command in bot.pending_application_commands:

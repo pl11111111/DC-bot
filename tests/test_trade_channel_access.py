@@ -30,10 +30,10 @@ class TradeAccessTests(unittest.IsolatedAsyncioTestCase):
         with patch('modules.new_trading.cfg.PAYMENTS_ENABLED',True),patch('modules.new_trading.payments.payout_amount_quote',AsyncMock()) as quote,patch('modules.new_trading.db.transaction',tx),patch('modules.new_trading.db.query',AsyncMock()) as query,patch('modules.new_trading.db.audit',AsyncMock()),patch('modules.new_trading.trade_admission.reserve',AsyncMock()) as reserve,patch('modules.new_trading.log.exception') as crash_log:
             await cog.start(ctx,seller)
             modal=ctx.send_modal.await_args.args[0]
-            self.assertFalse(modal.children[2].required)
+            self.assertFalse(modal.children[2].item.required)
             for low in ('3.01','5.00','?id=1 AND 1=2',"1' OR '1'='1",'',None,'10 USDT','10,50','5.01000001','1e1','NaN','Infinity'):
                 rejected=NS(guild=guild,user=buyer,response=NS(defer=AsyncMock()),followup=NS(send=AsyncMock()))
-                modal._refresh(rejected,[{'type':1,'components':[{'type':4,'custom_id':field.custom_id,'value':value}]}
+                modal._refresh(rejected,[{'type':18,'component':{'type':4,'custom_id':field.item.custom_id,'value':value}}
                                          for field,value in zip(modal.children,['Item',low,''])])
                 await modal.callback(rejected)
                 self.assertEqual(rejected.followup.send.await_args.args[0],'Enter a valid amount with at most 2 decimals. Minimum: 5.01 USDT.')
@@ -43,7 +43,7 @@ class TradeAccessTests(unittest.IsolatedAsyncioTestCase):
                 query.assert_not_awaited()
                 reserve.assert_not_awaited()
                 crash_log.assert_not_called()
-            for field,value in zip(modal.children,['Item','5.01','']): field._input_value=value
+            for field,value in zip(modal.children,['Item','5.01','']): field.item._input_value=value
             inter=NS(guild=guild,user=buyer,response=NS(defer=AsyncMock()),followup=NS(send=AsyncMock()))
             wrong_guild=NS(guild=NS(id=3),user=buyer,response=NS(defer=AsyncMock()),followup=NS(send=AsyncMock()))
             await modal.callback(wrong_guild)

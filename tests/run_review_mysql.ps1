@@ -27,6 +27,8 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Financial safety race checks failed' }
     .\.venv\Scripts\python.exe -m tests.mysql_input_safety
     if ($LASTEXITCODE -ne 0) { throw 'Hostile input database checks failed' }
+    .\.venv\Scripts\python.exe -m tests.mysql_trade_images
+    if ($LASTEXITCODE -ne 0) { throw 'Trade image persistence checks failed' }
 } finally {
     if (-not $reviewProcess.HasExited) {
         & 'C:/Program Files/MySQL/MySQL Server 8.0/bin/mysqladmin.exe' --no-defaults --host=127.0.0.1 --port=33379 --user=root shutdown

@@ -231,7 +231,13 @@
     "status_releasing_refund": "退款处理中",
     "status_refunded": "退款已完成",
     "status_manual_refunded": "已登记手动退款",
-    "status_test_closed": "测试订单已结清"
+    "status_test_closed": "测试订单已结清",
+    "image_label": "物品图片（可选）",
+    "image_hint": "1 张图片 · JPG / PNG / WebP · 最大 5 MB",
+    "image_alt": "交易发起者提供的物品图片，仅用于展示。请勿按图片中的地址或二维码转账。",
+    "image_invalid": "图片无效或不受支持。请重新打开表单，上传静态 JPG、PNG 或 WebP 图片。",
+    "image_limits": "图片限 1 张、5 MB、1600 万像素，每边不超过 8192 像素。请重新打开表单重试。",
+    "image_busy": "图片处理繁忙，请稍后重新打开交易表单再试。"
   },
   "English": {
     "legacy_000": "Select a listing to delete",
@@ -465,7 +471,13 @@
     "status_releasing_refund": "Refund processing",
     "status_refunded": "Refunded",
     "status_manual_refunded": "Manual refund recorded",
-    "status_test_closed": "Test order closed"
+    "status_test_closed": "Test order closed",
+    "image_label": "Item picture (optional)",
+    "image_hint": "1 image · JPG / PNG / WebP · Maximum 5 MB",
+    "image_alt": "Item picture provided by the trade initiator, for display only. Do not pay addresses or QR codes in this picture.",
+    "image_invalid": "Invalid or unsupported image. Reopen the form and upload a static JPG, PNG or WebP.",
+    "image_limits": "Upload one image up to 5 MB, 16 megapixels and 8192 pixels per side. Reopen the form to retry.",
+    "image_busy": "Image processing is busy. Reopen the trade form and try again shortly."
   },
   "日本語": {
     "legacy_000": "削除する募集を選択",
@@ -699,7 +711,13 @@
     "status_releasing_refund": "返金処理中",
     "status_refunded": "返金完了",
     "status_manual_refunded": "手動返金記録済み",
-    "status_test_closed": "テスト注文終了"
+    "status_test_closed": "テスト注文終了",
+    "image_label": "商品画像（任意）",
+    "image_hint": "画像1枚 · JPG / PNG / WebP · 最大5 MB",
+    "image_alt": "取引開始者が提供した商品画像（展示用）。画像内のアドレスやQRコードには送金しないでください。",
+    "image_invalid": "無効または未対応の画像です。フォームを開き直して静止画のJPG、PNG、WebPをアップロードしてください。",
+    "image_limits": "画像は1枚、5 MB、1600万画素、各辺8192ピクセルまでです。フォームを開き直してください。",
+    "image_busy": "画像処理が混み合っています。少し待って取引フォームを開き直してください。"
   },
   "한국어": {
     "legacy_000": "삭제할 거래 게시물 선택",
@@ -933,7 +951,13 @@
     "status_releasing_refund": "환불 처리 중",
     "status_refunded": "환불 완료",
     "status_manual_refunded": "수동 환불 기록됨",
-    "status_test_closed": "테스트 주문 종료"
+    "status_test_closed": "테스트 주문 종료",
+    "image_label": "상품 사진 (선택)",
+    "image_hint": "사진 1장 · JPG / PNG / WebP · 최대 5 MB",
+    "image_alt": "거래 개시자가 제공한 상품 사진이며 전시용입니다. 사진 속 주소나 QR 코드로 송금하지 마세요.",
+    "image_invalid": "유효하지 않거나 지원하지 않는 이미지입니다. 양식을 다시 열고 정지 JPG, PNG 또는 WebP를 올리세요.",
+    "image_limits": "이미지는 1장, 5 MB, 1600만 화소, 각 변 8192픽셀 이하입니다. 양식을 다시 여세요.",
+    "image_busy": "이미지 처리 중입니다. 잠시 후 거래 양식을 다시 열고 시도하세요."
   },
   "Bahasa Indonesia": {
     "legacy_000": "Pilih penawaran yang akan dihapus",
@@ -1167,7 +1191,13 @@
     "status_releasing_refund": "Pengembalian diproses",
     "status_refunded": "Dana dikembalikan",
     "status_manual_refunded": "Pengembalian manual dicatat",
-    "status_test_closed": "Pesanan tes ditutup"
+    "status_test_closed": "Pesanan tes ditutup",
+    "image_label": "Foto barang (opsional)",
+    "image_hint": "1 gambar · JPG / PNG / WebP · Maksimal 5 MB",
+    "image_alt": "Foto barang dari pembuat transaksi, hanya untuk tampilan. Jangan membayar ke alamat atau kode QR dalam foto ini.",
+    "image_invalid": "Gambar tidak valid atau tidak didukung. Buka ulang formulir dan unggah JPG, PNG atau WebP statis.",
+    "image_limits": "Unggah satu gambar hingga 5 MB, 16 megapiksel dan 8192 piksel per sisi. Buka ulang formulir.",
+    "image_busy": "Pemrosesan gambar sibuk. Buka ulang formulir transaksi dan coba sebentar lagi."
   },
   "Bahasa Melayu": {
     "legacy_000": "Pilih iklan untuk dipadam",
@@ -1401,7 +1431,13 @@
     "status_releasing_refund": "Bayaran balik diproses",
     "status_refunded": "Bayaran dipulangkan",
     "status_manual_refunded": "Bayaran balik manual direkodkan",
-    "status_test_closed": "Pesanan ujian ditutup"
+    "status_test_closed": "Pesanan ujian ditutup",
+    "image_label": "Gambar barang (pilihan)",
+    "image_hint": "1 gambar · JPG / PNG / WebP · Maksimum 5 MB",
+    "image_alt": "Gambar barang daripada pemula transaksi, untuk paparan sahaja. Jangan bayar ke alamat atau kod QR dalam gambar ini.",
+    "image_invalid": "Gambar tidak sah atau tidak disokong. Buka semula borang dan muat naik JPG, PNG atau WebP statik.",
+    "image_limits": "Muat naik satu gambar sehingga 5 MB, 16 megapiksel dan 8192 piksel setiap sisi. Buka semula borang.",
+    "image_busy": "Pemprosesan gambar sibuk. Buka semula borang transaksi dan cuba sebentar lagi."
   },
   "Tagalog": {
     "legacy_000": "Piliin ang listing na buburahin",
@@ -1635,7 +1671,13 @@
     "status_releasing_refund": "Pinoproseso ang refund",
     "status_refunded": "Na-refund na",
     "status_manual_refunded": "Naitala ang manual refund",
-    "status_test_closed": "Isinara ang test order"
+    "status_test_closed": "Isinara ang test order",
+    "image_label": "Larawan ng item (opsyonal)",
+    "image_hint": "1 larawan · JPG / PNG / WebP · Hanggang 5 MB",
+    "image_alt": "Larawan ng item mula sa nagsimula ng trade, para sa pagpapakita lang. Huwag magbayad sa address o QR code sa larawang ito.",
+    "image_invalid": "Hindi valid o hindi suportado ang larawan. Buksan muli ang form at mag-upload ng static na JPG, PNG o WebP.",
+    "image_limits": "Isang larawan lang na hanggang 5 MB, 16 megapixel at 8192 pixel bawat gilid. Buksan muli ang form.",
+    "image_busy": "Abala ang pagproseso ng larawan. Buksan muli ang trade form at subukan mamaya."
   },
   "Português": {
     "legacy_000": "Selecione um anúncio para excluir",
@@ -1869,7 +1911,13 @@
     "status_releasing_refund": "Reembolso em processamento",
     "status_refunded": "Reembolsado",
     "status_manual_refunded": "Reembolso manual registrado",
-    "status_test_closed": "Pedido de teste encerrado"
+    "status_test_closed": "Pedido de teste encerrado",
+    "image_label": "Foto do item (opcional)",
+    "image_hint": "1 imagem · JPG / PNG / WebP · Máximo 5 MB",
+    "image_alt": "Foto do item fornecida pelo iniciador, apenas para exibição. Não pague para endereços ou códigos QR nesta foto.",
+    "image_invalid": "Imagem inválida ou incompatível. Reabra o formulário e envie um JPG, PNG ou WebP estático.",
+    "image_limits": "Envie uma imagem de até 5 MB, 16 megapixels e 8192 pixels por lado. Reabra o formulário.",
+    "image_busy": "O processamento de imagens está ocupado. Reabra o formulário e tente em instantes."
   },
   "Español": {
     "legacy_000": "Selecciona un anuncio para eliminar",
@@ -2103,7 +2151,13 @@
     "status_releasing_refund": "Reembolso en proceso",
     "status_refunded": "Reembolsado",
     "status_manual_refunded": "Reembolso manual registrado",
-    "status_test_closed": "Pedido de prueba cerrado"
+    "status_test_closed": "Pedido de prueba cerrado",
+    "image_label": "Foto del artículo (opcional)",
+    "image_hint": "1 imagen · JPG / PNG / WebP · Máximo 5 MB",
+    "image_alt": "Foto del artículo aportada por quien inició la operación, solo para mostrarlo. No pagues a direcciones ni códigos QR de esta foto.",
+    "image_invalid": "Imagen inválida o no compatible. Abre de nuevo el formulario y sube un JPG, PNG o WebP estático.",
+    "image_limits": "Sube una imagen de hasta 5 MB, 16 megapíxeles y 8192 píxeles por lado. Abre de nuevo el formulario.",
+    "image_busy": "El procesamiento de imágenes está ocupado. Abre de nuevo el formulario e inténtalo en breve."
   },
   "ภาษาไทย": {
     "legacy_000": "เลือกรายการประกาศที่จะลบ",
@@ -2337,7 +2391,13 @@
     "status_releasing_refund": "กำลังคืนเงิน",
     "status_refunded": "คืนเงินแล้ว",
     "status_manual_refunded": "บันทึกคืนเงินเองแล้ว",
-    "status_test_closed": "ปิดคำสั่งซื้อทดสอบแล้ว"
+    "status_test_closed": "ปิดคำสั่งซื้อทดสอบแล้ว",
+    "image_label": "รูปสินค้า (ไม่บังคับ)",
+    "image_hint": "1 รูป · JPG / PNG / WebP · สูงสุด 5 MB",
+    "image_alt": "รูปสินค้าจากผู้เริ่มการซื้อขาย ใช้แสดงสินค้าเท่านั้น อย่าโอนเงินตามที่อยู่หรือรหัส QR ในรูปนี้",
+    "image_invalid": "รูปไม่ถูกต้องหรือไม่รองรับ เปิดแบบฟอร์มใหม่และอัปโหลดรูปนิ่ง JPG, PNG หรือ WebP",
+    "image_limits": "อัปโหลด 1 รูป ไม่เกิน 5 MB, 16 ล้านพิกเซล และด้านละ 8192 พิกเซล เปิดแบบฟอร์มใหม่",
+    "image_busy": "ระบบรูปภาพกำลังทำงาน เปิดแบบฟอร์มซื้อขายใหม่แล้วลองอีกครั้งในภายหลัง"
   },
   "Tiếng Việt": {
     "legacy_000": "Chọn tin đăng cần xóa",
@@ -2571,6 +2631,12 @@
     "status_releasing_refund": "Đang hoàn tiền",
     "status_refunded": "Đã hoàn tiền",
     "status_manual_refunded": "Đã ghi nhận hoàn thủ công",
-    "status_test_closed": "Đã đóng đơn thử nghiệm"
+    "status_test_closed": "Đã đóng đơn thử nghiệm",
+    "image_label": "Ảnh hàng (không bắt buộc)",
+    "image_hint": "1 ảnh · JPG / PNG / WebP · Tối đa 5 MB",
+    "image_alt": "Ảnh hàng do người tạo giao dịch cung cấp, chỉ để trưng bày. Không chuyển tiền đến địa chỉ hoặc mã QR trong ảnh này.",
+    "image_invalid": "Ảnh không hợp lệ hoặc không hỗ trợ. Mở lại biểu mẫu và tải ảnh tĩnh JPG, PNG hoặc WebP.",
+    "image_limits": "Tải 1 ảnh tối đa 5 MB, 16 triệu điểm ảnh và 8192 điểm ảnh mỗi cạnh. Mở lại biểu mẫu.",
+    "image_busy": "Đang bận xử lý ảnh. Mở lại biểu mẫu giao dịch và thử sau ít phút."
   }
 }
