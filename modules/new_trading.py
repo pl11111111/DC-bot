@@ -212,7 +212,8 @@ class NewTrading(commands.Cog):
         previous=await db.setting(key)
         item_file=None
         try:
-            item_file=trade_images.file(await db.setting('trade_image:'+row['id']))
+            if row['status']=='pending':
+                item_file=trade_images.file(await db.setting('trade_image:'+row['id']))
             if item_file is not None:
                 image_description=' / '.join(ui_text(lang,'image_alt') for lang in row['_languages'])
                 message=await self.send_step(channel,row['status'],embed,self.view(row),qr_file,item_file,image_description)

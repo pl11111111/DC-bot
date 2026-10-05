@@ -248,14 +248,23 @@ class ImageTests(unittest.IsolatedAsyncioTestCase):
         cog.view=MagicMock(return_value=None)
         uploaded=[]
         async def send(*args):
-            uploaded.append(args[5]); self.assertEqual(args[5].fp.read(2),b'\xff\xd8')
+            if args[1]=='pending':
+                uploaded.append(args[5]); self.assertEqual(args[5].fp.read(2),b'\xff\xd8')
+            else:
+                self.assertEqual(len(args),4)
             return NS(id=9)
         cog.send_step=AsyncMock(side_effect=send); cog.deliver_step_notification=AsyncMock()
         stored=asset(images.normalize(picture(),'PNG','image/png'))
-        async def setting(key,*values):return stored if key=='trade_image:order' else None
+        image_reads=[]
+        async def setting(key,*values):
+            if key=='trade_image:order':
+                image_reads.append(key)
+                return stored
+            return None
         with patch('modules.new_trading.db.setting',AsyncMock(side_effect=setting)),patch('utils.trade_language.assign',AsyncMock(side_effect=lambda row,guild:dict(row,_languages=['English']))),patch('utils.trade_language.localize_embed',side_effect=lambda embed,row:embed),patch.object(images,'download',AsyncMock()) as download:
-            for status in ('pending','completed'):
+            for status in ('pending','pending','confirmed','paid','shipped','receipt_confirmed','releasing','completed','cancelled','refund_ready','refunded'):
                 await cog._post(dict(id='order',status=status))
             download.assert_not_awaited()
         self.assertEqual(len(uploaded),2)
+        self.assertEqual(len(image_reads),2)
         self.assertTrue(all(f.fp.closed for f in uploaded))
