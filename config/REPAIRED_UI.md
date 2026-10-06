@@ -54,3 +54,15 @@
 使用现有 `settings` 表的 `trade_image:<订单ID>` 保存编码后的图片及校验值，与订单同一事务提交。物品图片仅在第一步待确认（`pending`）的交易卡片展示，该步骤刷新或重启恢复时重新上传保存的图片，不依赖临时附件链接；后续步骤不再附带物品图片。第一步的历史消息和数据库图片保留，不自动删除。每单图片数据库占用最多约 683 KiB（Base64），备份时需包含这些记录。
 
 本次图片功能运行时文件需一起同步：修改 `modules/new_trading.py`、`utils/trade_card.py`、`config/repaired_ui.json`；新增 `utils/trade_images.py`。无需数据库迁移或新增依赖，使用当前锁定的 Pycord 2.8.1、Pillow 12.3.0 和 aiohttp。同步后重启机器人；本地测试没有连接真实 Discord 或执行资金操作。
+
+## 双方通知与已结案保留频道（2026-10-05）
+
+`config/trade_translations.json` 的 `participants` 分别配置买家、卖家提示，覆盖正常交易及异常状态；`pending_sender` 和 `pending_recipient` 按发起者身份选择。新增 `closure_notice` 同时附在双方的交易完成、取消、退款完成及测试结清通知中。确认步骤超时、付款超时和手动退款分别沿用各自关闭流程，不混用普通结束后的 5 分钟规则。卖家 `waiting` 提示明确已检测到匹配入款、仍需等待支付平台确认，不能提前交付。
+
+新增管理员指令 `/new_trade close`：填写订单 ID 和关闭原因，核实保留问题已经解决，再点击确认。仅支持已保留且尚未删除的 `completed`、`refunded`、`test_closed` 频道；其他订单继续使用 `/new_trade review`。确认绑定发起管理员、当前权限、原社群、订单状态、频道及审计版本，5 分钟内有效且只能使用一次。
+
+确认后先将通知持久化为待发送，频道仍保持保留。通知成功发送给双方后，才启动新的约 5 分钟关闭倒计时；失败由后台重试。双方仍可点击保留按钮，取消此次安排。付款功能暂停时，这个已结案频道管理流程仍可运行。指令只更新频道保留状态、通知记录及审计，不修改订单结算结果、原完成时间，不触发资金转出或退款。
+
+新指令文字在 `config/repaired_ui.json` 中的 `cmd_channel_close`、`channel_close_*` 键下，已提供全部 11 种语言。原因由管理员原样填写，不自动翻译。频道中通知仅允许提及买家和卖家。
+
+本轮运行文件需一起同步：修改 `modules/new_trading.py`、`utils/trade_language.py`、`config/trade_translations.json`、`config/repaired_ui.json`；新增 `utils/trade_channel_close.py`。无需数据库迁移。重启机器人并同步 Discord 指令后，新入口才会显示。既有消息不会批量改写；新通知和后续卡片刷新使用新文案。

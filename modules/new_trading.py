@@ -16,7 +16,7 @@ from modules.new_community import buttons, admin, texts
 cfg=config.NEW
 log=logging.getLogger(__name__)
 from utils.trade_states import TERMINAL, TERMINAL_SQL, AUTO_CLEANUP, IDLE_SECONDS
-from utils import trade_idle, trade_admission, trade_images
+from utils import trade_idle, trade_admission, trade_images, trade_channel_close
 from utils.ui_language import localizations as ui_localizations, choice as ui_choice, decision_choices as ui_decision_choices
 from utils.ui_language import text as ui_text, error as ui_error, participants as ui_participants, participant_text as ui_participant_text, decision as ui_decision
 from utils.trade_private import text as private_text
@@ -521,7 +521,8 @@ class NewTrading(commands.Cog):
                     if current['status']=='payment_timeout':
                         await self.transition(ident,'payment_timeout','payment_review',actor,{'reason':'用户取消关闭'})
                     await db.query('UPDATE tracked_channels SET hold=TRUE WHERE channel_id=%s',(row['channel_id'],))
-                await db.audit(actor,'retain_channel',{},ident)
+                    await trade_channel_close.cancel(ident)
+                    await db.audit(actor,'retain_channel',{},ident)
                 await self.alert(ui_text(inter.guild,'alert_hold',order=ident,channel=f'<#{row["channel_id"]}>'),notify_admins=True,fallback=inter.channel)
                 await self.post(await self.order(ident),'已取消自动关闭，频道已保留，等待管理员核实。')
                 return await inter.followup.send(private_ui.text(inter.user,'hold'),ephemeral=True)
@@ -909,6 +910,7 @@ class NewTrading(commands.Cog):
                         await self._post(row)
                     else:
                         await self.deliver_step_notification(channel,row)
+                await self.deliver_channel_close_notice(row['id'])
             except Exception: log.exception('Trade notification recovery failed: %s',row['id'])
 
     async def idle_worker(self):
@@ -946,7 +948,7 @@ class NewTrading(commands.Cog):
                 log.exception('Idle order recovery failed: %s',row['id'])
                 await self.recovery_alert(row)
 
-    async def cleanup_finished(self):
+    async def cleanup_finished(self,only_admin=False):
         rows=await db.query("SELECT o.* FROM orders o JOIN tracked_channels c ON c.channel_id=o.channel_id WHERE c.hold=FALSE AND (o.status='expired' OR (o.status IN ('completed','cancelled','refunded','test_closed') AND o.closed_at<UTC_TIMESTAMP()-INTERVAL 5 MINUTE))")
         for row in rows:
             try:
@@ -955,6 +957,11 @@ class NewTrading(commands.Cog):
                     if not fresh or fresh['status'] not in AUTO_CLEANUP: continue
                     if fresh['status']!='expired' and (not fresh.get('closed_at') or fresh['closed_at']>datetime.utcnow()-timedelta(minutes=5)): continue
                     if await db.setting('channel_deleted:'+row['id']): continue
+                    closing=await db.setting('channel_close:'+row['id'])
+                    if only_admin and (not closing or closing.get('phase')!='waiting'):continue
+                    if closing and (closing.get('phase')=='queued' or
+                            (closing.get('phase')=='waiting' and time.time()<closing['announced_at']+300)):
+                        continue
                     tracked=await db.query('SELECT hold FROM tracked_channels WHERE channel_id=%s',(fresh['channel_id'],),one=True)
                     if not tracked or tracked['hold']: continue
                     channel=await self.resolve_trade_channel(fresh)
@@ -976,8 +983,11 @@ class NewTrading(commands.Cog):
             guild=self.bot.get_guild(cfg.GUILD_ID)
             if not guild: return
             if not cfg.PAYMENTS_ENABLED:
-                await self.retry_forums(guild)
-                await self.manual_close_worker()
+                for operation,args,kwargs in ((self.retry_forums,(guild,),{}),
+                        (self.manual_close_worker,(),{}),(self.retry_channel_closures,(),{}),
+                        (self.cleanup_finished,(),{'only_admin':True})):
+                    try:await operation(*args,**kwargs)
+                    except Exception:log.exception('Paused-payment maintenance failed: %s',operation.__name__)
                 return
             await self.check_closed_payments()
             rows=await db.query("SELECT * FROM orders WHERE status IN ('invoicing','paying','payment_timeout','payment_review','releasing','releasing_refund')")
@@ -1100,6 +1110,68 @@ class NewTrading(commands.Cog):
         except Exception:
             log.exception('Review preview failed')
             await ctx.followup.send(ui_text(ctx,'operation_review'),ephemeral=True)
+
+    @trade_admin.command(name='close',description=ui_text('English','cmd_channel_close'),description_localizations=ui_localizations('cmd_channel_close'))
+    async def close_settled_channel(self,ctx,order_id:discord.Option(str,description=ui_text('English','opt_order'),description_localizations=ui_localizations('opt_order')),reason:discord.Option(str,description=ui_text('English','opt_reason'),description_localizations=ui_localizations('opt_reason'))):
+        if not ctx.guild or ctx.guild.id!=cfg.GUILD_ID or not admin(ctx.author,cfg.TRADE_ADMIN_ROLES):
+            return await ctx.respond(ui_text(ctx,'legacy_006'),ephemeral=True)
+        await ctx.defer(ephemeral=True)
+        try:
+            async with self.cleanup_lock:
+                data=await trade_channel_close.prepare(order_id,ctx.author.id,reason)
+            view=discord.ui.View(timeout=300)
+            button=discord.ui.Button(label=ui_text(ctx,'channel_close_confirm'),style=discord.ButtonStyle.danger)
+            lock=asyncio.Lock()
+            async def accepted(inter):
+                if (not inter.guild or inter.guild.id!=cfg.GUILD_ID or inter.user.id!=ctx.author.id
+                        or not admin(inter.user,cfg.TRADE_ADMIN_ROLES)):
+                    return await inter.response.send_message(ui_text(inter,'legacy_006'),ephemeral=True)
+                await inter.response.defer(ephemeral=True,invisible=False)
+                async with lock:
+                    try:
+                        if button.disabled:raise trade_channel_close.CloseRejected('preview_stale')
+                        async with self.cleanup_lock:
+                            await trade_channel_close.confirm(order_id,inter.user.id,data['code'])
+                        button.disabled=True
+                    except trade_channel_close.CloseRejected as exc:
+                        return await inter.followup.send(ui_text(inter,exc.key),ephemeral=True)
+                    except Exception:
+                        log.exception('Settled channel closure confirmation failed: %s',order_id)
+                        return await inter.followup.send(ui_text(inter,'operation_review'),ephemeral=True)
+                    try:
+                        await self.deliver_channel_close_notice(order_id)
+                    except Exception:
+                        log.exception('Channel closure queued; notification will retry: %s',order_id)
+                    await inter.followup.send(ui_text(inter,'channel_close_saved'),ephemeral=True)
+            button.callback=accepted
+            view.add_item(button)
+            await ctx.followup.send(ui_text(ctx,'channel_close_preview',order=order_id,reason=data['reason']),view=view,ephemeral=True,allowed_mentions=discord.AllowedMentions.none())
+        except trade_channel_close.CloseRejected as exc:
+            await ctx.followup.send(ui_text(ctx,exc.key),ephemeral=True)
+        except Exception:
+            log.exception('Settled channel closure preview failed: %s',order_id)
+            await ctx.followup.send(ui_text(ctx,'operation_review'),ephemeral=True)
+
+    async def deliver_channel_close_notice(self,ident):
+        async with self.cleanup_lock:
+            state=await db.setting('channel_close:'+ident)
+            if not state or state.get('phase')!='queued':return
+            row=await self.order(ident)
+            tracked=await db.query('SELECT hold FROM tracked_channels WHERE channel_id=%s',(state['channel'],),one=True)
+            if (not row or row['status']!=state['status'] or row['status'] not in trade_channel_close.SETTLED
+                    or row['channel_id']!=state['channel'] or not tracked or not tracked['hold']):return
+            channel=await self.resolve_trade_channel(row)
+            if channel is None:return
+            localized=await ui_participants(row,channel.guild)
+            text,mentions=ui_participant_text(localized,'channel_close_notice','channel_close_notice',reason=state['reason'])
+            await channel.send(text,view=self.view(localized),allowed_mentions=mentions)
+            await trade_channel_close.activate(ident,state['generation'])
+
+    async def retry_channel_closures(self):
+        rows=await db.query("SELECT o.id FROM orders o JOIN settings s ON s.setting_key=CONCAT('channel_close:',o.id) WHERE o.status IN ('completed','refunded','test_closed') AND JSON_UNQUOTE(JSON_EXTRACT(s.value,'$.phase'))='queued'")
+        for row in rows:
+            try:await self.deliver_channel_close_notice(row['id'])
+            except Exception:log.exception('Settled channel closure notification recovery failed: %s',row['id'])
 
     async def manual_refund(self,ctx,order_id:str,deposit_txid:str,withdrawal_id:str,refund_address:str,reason:str):
         if not ctx.guild or ctx.guild.id!=cfg.GUILD_ID or not admin(ctx.author,cfg.TRADE_ADMIN_ROLES):

@@ -34,7 +34,7 @@ class LoadTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn('new_log_release',names)
         self.assertNotIn('new_trade_review',names)
         trade=next(c for c in bot.pending_application_commands if c.name=='new_trade')
-        self.assertEqual({c.name for c in trade.subcommands},{'review'})
+        self.assertEqual({c.name for c in trade.subcommands},{'review','close'})
         self.assertNotIn('modules.party',main.COGS_TO_LOAD)
         self.assertNotIn('party',{c.name for c in bot.pending_application_commands})
         for command in bot.pending_application_commands:

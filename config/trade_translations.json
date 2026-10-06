@@ -32,7 +32,7 @@
       "Payment deadline",
       "Order"
     ],
-    "pending_sender": "You sent this trade request. Please wait for the other participant to confirm. Do not pay or deliver yet.",
+    "pending_sender": "You sent this trade request. Please wait for the other participant to confirm. Do not pay or deliver yet. If the other participant does not confirm within 30 minutes, the order will expire.",
     "pending_recipient": "You received a trade request. Review the item, price and terms, then click Confirm trade within 30 minutes. Do not pay or deliver yet.",
     "participants": {
       "confirmed": {
@@ -49,7 +49,7 @@
       },
       "waiting": {
         "buyer": "A matching deposit was detected. Wait for platform confirmation; do not pay again.",
-        "seller": "Wait for the bot to confirm payment and notify you to deliver. Do not deliver based on screenshots or pay for the buyer."
+        "seller": "The system detected a matching deposit and is waiting for the payment provider to confirm it. Please keep waiting. Do not deliver the item until the bot shows “Payment confirmed” and tells you to ship."
       },
       "paid": {
         "buyer": "Payment confirmed. Please wait for the seller to deliver the item.",
@@ -64,7 +64,7 @@
         "seller": "Seller: claim payment and check the address and network fee. The escrow fee is charged; the network fee is deducted from the item price."
       },
       "releasing": {
-        "buyer": "The seller can claim payment. You do not need to pay again; wait for settlement.",
+        "buyer": "The system is processing the seller payout. Wait for settlement; you do not need to pay again.",
         "seller": "Processing the transfer. Do not submit another request."
       },
       "refund_ready": {
@@ -80,14 +80,41 @@
         "seller": "The buyer refund is complete. This order is closed; do not deliver or claim seller payment."
       },
       "completed": {
-        "buyer": "Trade completed. No further payment is needed.",
-        "seller": "Trade completed. Check the transfer record. The channel closes in about 5 minutes unless retained."
+        "buyer": "Trade completed. The system confirmed the seller payout was sent. You do not need to pay again.",
+        "seller": "Trade completed. The system confirmed the seller payout was sent; check your receipt records."
       },
       "manual_refunded": {
-        "buyer": "Refund completed. Please check your refund record.",
-        "seller": "The buyer refund is complete. This order is closed; do not deliver or claim seller payment."
+        "buyer": "An administrator verified the manual refund. Check receipt, then confirm closure. If it has not arrived or there is an issue, use Issue / Keep open.",
+        "seller": "This order has a recorded refund. Do not deliver the item. Contact an administrator in this channel if needed."
+      },
+      "cancelled": {
+        "buyer": "This order is cancelled. Do not pay. If you already paid, request channel retention and contact an administrator with your payment records.",
+        "seller": "This order is cancelled. Do not deliver or claim funds. If you already delivered, request channel retention and contact an administrator with delivery records."
+      },
+      "expired": {
+        "buyer": "The confirmation or payment-information step expired. The order has ended and the channel is entering automatic closure. Do not pay or deliver. If you already did, or need a review, immediately request channel retention and contact an administrator.",
+        "seller": "The confirmation or payment-information step expired. The order has ended and the channel is entering automatic closure. Do not pay or deliver. If you already did, or need a review, immediately request channel retention and contact an administrator."
+      },
+      "disputed": {
+        "buyer": "Administrator review required. Do not pay again or deliver. Keep payment and delivery evidence.",
+        "seller": "Administrator review required. Do not pay again or deliver. Keep payment and delivery evidence."
+      },
+      "payment_review": {
+        "buyer": "Administrator review required. Do not pay again or deliver. Keep payment and delivery evidence.",
+        "seller": "Administrator review required. Do not pay again or deliver. Keep payment and delivery evidence."
+      },
+      "test_closed": {
+        "buyer": "This order was closed as a test. Funds remain in the escrow account; claiming is disabled.",
+        "seller": "This order was closed as a test. Funds remain in the escrow account; claiming is disabled."
+      },
+      "payment_timeout": {
+        "buyer": "Do not pay again. If already paid, contact an administrator and keep the channel open.",
+        "seller": "The payment deadline has passed and payment is not confirmed. Do not deliver. If the buyer says they paid, or you already delivered, request channel retention and contact an administrator before the closure countdown ends."
       }
-    }
+    },
+    "closure_notice": "Unless someone requests retention, this channel will close about 5 minutes after the order ends. Save your records; if there is a problem, use “Keep channel / Contact admin”.",
+    "expired": "The confirmation or payment-information step expired. The order has ended and the channel is entering automatic closure. Do not pay or deliver. If you already did, or need a review, immediately request channel retention and contact an administrator.",
+    "pending_limit": "If the other participant does not confirm within 30 minutes, the order will expire."
   },
   "中文": {
     "pending": "请交易对方在 30 分钟内确认。暂勿付款或发货。",
@@ -122,7 +149,7 @@
       "付款截止",
       "订单"
     ],
-    "pending_sender": "你已发起交易，请等待对方确认。暂勿付款或发货。",
+    "pending_sender": "你已发起交易，请等待对方确认。暂勿付款或发货。 若对方在 30 分钟内未确认，订单将超时结束。",
     "pending_recipient": "你收到交易邀请，请核对商品、价格和约定，并在 30 分钟内点击「Confirm trade（确认交易）」。暂勿付款或发货。",
     "participants": {
       "confirmed": {
@@ -139,7 +166,7 @@
       },
       "waiting": {
         "buyer": "已检测到匹配入款，正在等待支付平台确认，请勿重复付款。",
-        "seller": "请等待 bot 确认到账并发出发货通知后再交付商品。不要仅凭截图发货，也不要替买家付款。"
+        "seller": "系统已检测到匹配入款，正在等待支付平台确认，请继续等待。系统显示「支付已确认」并发出发货通知前，请勿交付商品。"
       },
       "paid": {
         "buyer": "支付已确认，请等待卖家交付商品。",
@@ -154,7 +181,7 @@
         "seller": "卖家请领取货款并核对地址及网络费。正常收取担保费，网络费从商品价款扣除。"
       },
       "releasing": {
-        "buyer": "卖家可以领取货款，请等待结算；你无需再次付款。",
+        "buyer": "系统正在处理卖家的货款转出，请等待结算结果。你无需再次付款。",
         "seller": "转账处理中，请勿重复申请。"
       },
       "refund_ready": {
@@ -170,14 +197,41 @@
         "seller": "买家退款已完成，本订单已结束；请勿继续发货或领取卖家货款。"
       },
       "completed": {
-        "buyer": "交易已完成，无需再次付款。",
-        "seller": "交易完成，请核对收款记录。频道约 5 分钟后关闭，需要核实可申请保留。"
+        "buyer": "交易已完成，系统已确认卖家货款转出，你无需再次付款。",
+        "seller": "交易已完成，系统已确认货款转出，请核对你的收款记录。"
       },
       "manual_refunded": {
-        "buyer": "退款已完成，请核对你的退款到账记录。",
-        "seller": "买家退款已完成，本订单已结束；请勿继续发货或领取卖家货款。"
+        "buyer": "管理员已核实手动退款完成。请核对退款后点击「确认关闭」；若未收到或仍有问题，请点击「尚有问题／暂不关闭」。",
+        "seller": "本订单已登记退款，请勿继续发货；如有问题，请在频道内联系管理员。"
+      },
+      "cancelled": {
+        "buyer": "本订单已取消，请勿继续付款。若已付款，请立即申请保留频道并联系管理员，提供付款记录。",
+        "seller": "本订单已取消，请勿继续发货或领取货款。若已交付商品，请立即申请保留频道并联系管理员，提供交付记录。"
+      },
+      "expired": {
+        "buyer": "本订单因未及时确认交易或获取付款信息而超时结束，频道将进入自动关闭流程。请勿继续付款或发货；若已付款、已交付或需要核实，请立即申请保留频道并联系管理员。",
+        "seller": "本订单因未及时确认交易或获取付款信息而超时结束，频道将进入自动关闭流程。请勿继续付款或发货；若已付款、已交付或需要核实，请立即申请保留频道并联系管理员。"
+      },
+      "disputed": {
+        "buyer": "等待管理员核实，请勿重复付款或发货，请保留付款和交付证据。",
+        "seller": "等待管理员核实，请勿重复付款或发货，请保留付款和交付证据。"
+      },
+      "payment_review": {
+        "buyer": "等待管理员核实，请勿重复付款或发货，请保留付款和交付证据。",
+        "seller": "等待管理员核实，请勿重复付款或发货，请保留付款和交付证据。"
+      },
+      "test_closed": {
+        "buyer": "本订单已记为测试结清，资金留存在担保账户，领取入口已关闭。",
+        "seller": "本订单已记为测试结清，资金留存在担保账户，领取入口已关闭。"
+      },
+      "payment_timeout": {
+        "buyer": "请勿继续付款；若已付款，请联系管理员并保留频道核对。",
+        "seller": "本订单付款已超时，系统尚未确认到账，请勿发货。若买家表示已付款，或你已交付商品，请在关闭倒计时结束前申请保留频道并联系管理员。"
       }
-    }
+    },
+    "closure_notice": "若无人申请保留，频道将在订单结束约 5 分钟后关闭。请及时保存交易记录；如有问题，请点击「保留频道并通知管理员」。",
+    "expired": "本订单因未及时确认交易或获取付款信息而超时结束，频道将进入自动关闭流程。请勿继续付款或发货；若已付款、已交付或需要核实，请立即申请保留频道并联系管理员。",
+    "pending_limit": "若对方在 30 分钟内未确认，订单将超时结束。"
   },
   "日本語": {
     "pending": "相手は30分以内に取引を確認してください。まだ支払いや配送をしないでください。",
@@ -212,7 +266,7 @@
       "支払期限",
       "注文"
     ],
-    "pending_sender": "取引を申し込みました。相手の確認をお待ちください。まだ支払いや配送をしないでください。",
+    "pending_sender": "取引を申し込みました。相手の確認をお待ちください。まだ支払いや配送をしないでください。 相手が30分以内に確認しない場合、注文は期限切れとなります。",
     "pending_recipient": "取引の申し込みが届きました。商品、価格、条件を確認し、30分以内に「Confirm trade」を押してください。まだ支払いや配送をしないでください。",
     "participants": {
       "confirmed": {
@@ -229,7 +283,7 @@
       },
       "waiting": {
         "buyer": "一致する入金を検出しました。プラットフォームの確認をお待ちください。再支払いは不要です。",
-        "seller": "botの入金確認と配送通知をお待ちください。スクリーンショットだけで配送したり、購入者の代わりに支払ったりしないでください。"
+        "seller": "システムが一致する入金を検出し、決済サービスの確認を待っています。引き続きお待ちください。「支払い確認済み」と発送通知が表示されるまで商品を引き渡さないでください。"
       },
       "paid": {
         "buyer": "入金確認済みです。販売者からの商品のお届けをお待ちください。",
@@ -244,7 +298,7 @@
         "seller": "販売者は受取先とネットワーク手数料を確認し、代金を受け取ってください。保証手数料を徴収し、ネットワーク手数料は商品代金から差し引きます。"
       },
       "releasing": {
-        "buyer": "販売者は代金を受け取れます。決済の完了をお待ちください。再支払いは不要です。",
+        "buyer": "売り手への送金を処理中です。精算結果をお待ちください。再度支払う必要はありません。",
         "seller": "送金処理中です。再申請しないでください。"
       },
       "refund_ready": {
@@ -260,14 +314,41 @@
         "seller": "購入者への返金が完了し、注文は終了しました。配送や販売代金の受け取りを進めないでください。"
       },
       "completed": {
-        "buyer": "取引完了です。追加の支払いは不要です。",
-        "seller": "取引完了です。送金記録をご確認ください。保持申請がなければ約5分後にチャンネルを閉じます。"
+        "buyer": "取引が完了し、売り手への送金を確認しました。再度支払う必要はありません。",
+        "seller": "取引が完了し、システムが売上金の送金を確認しました。受取記録をご確認ください。"
       },
       "manual_refunded": {
-        "buyer": "返金完了です。返金の着金記録をご確認ください。",
-        "seller": "購入者への返金が完了し、注文は終了しました。配送や販売代金の受け取りを進めないでください。"
+        "buyer": "管理者が手動返金を確認しました。着金を確認して「閉鎖を確認」を押してください。未着金や問題がある場合は「問題あり／保持」を押してください。",
+        "seller": "この注文は返金済みとして記録されています。商品を渡さないでください。必要に応じてこのチャンネルで管理者に連絡してください。"
+      },
+      "cancelled": {
+        "buyer": "注文はキャンセルされました。送金しないでください。支払済みの場合はチャンネル保持を申請し、支払記録を添えて管理者へ連絡してください。",
+        "seller": "注文はキャンセルされました。発送・代金請求をしないでください。引渡し済みならチャンネル保持を申請し、引渡し記録を添えて管理者へ連絡してください。"
+      },
+      "expired": {
+        "buyer": "取引確認または支払情報取得が期限切れとなり、注文は終了しました。チャンネルは自動閉鎖処理に入ります。送金・発送をしないでください。実施済み、または確認が必要なら直ちに保持を申請し管理者へ連絡してください。",
+        "seller": "取引確認または支払情報取得が期限切れとなり、注文は終了しました。チャンネルは自動閉鎖処理に入ります。送金・発送をしないでください。実施済み、または確認が必要なら直ちに保持を申請し管理者へ連絡してください。"
+      },
+      "disputed": {
+        "buyer": "管理者の確認待ちです。再支払いや配送はせず、証拠を保存してください。",
+        "seller": "管理者の確認待ちです。再支払いや配送はせず、証拠を保存してください。"
+      },
+      "payment_review": {
+        "buyer": "管理者の確認待ちです。再支払いや配送はせず、証拠を保存してください。",
+        "seller": "管理者の確認待ちです。再支払いや配送はせず、証拠を保存してください。"
+      },
+      "test_closed": {
+        "buyer": "この注文はテストとして終了しました。資金は預かり口座に残り、受取は無効です。",
+        "seller": "この注文はテストとして終了しました。資金は預かり口座に残り、受取は無効です。"
+      },
+      "payment_timeout": {
+        "buyer": "再度支払わないでください。支払済みの場合は管理者に連絡しチャンネルを保持してください。",
+        "seller": "支払期限が切れ、入金は未確認です。発送しないでください。買い手が支払済みと申告した場合や引渡し済みの場合は、閉鎖カウントダウン終了前に保持を申請し管理者へ連絡してください。"
       }
-    }
+    },
+    "closure_notice": "保持申請がなければ、注文終了から約5分後にチャンネルを閉じます。記録を保存してください。問題があればチャンネル保持・管理者連絡ボタンを押してください。",
+    "expired": "取引確認または支払情報取得が期限切れとなり、注文は終了しました。チャンネルは自動閉鎖処理に入ります。送金・発送をしないでください。実施済み、または確認が必要なら直ちに保持を申請し管理者へ連絡してください。",
+    "pending_limit": "相手が30分以内に確認しない場合、注文は期限切れとなります。"
   },
   "한국어": {
     "pending": "거래 상대방은 30분 이내에 확인해 주세요. 아직 결제하거나 상품을 전달하지 마세요.",
@@ -302,7 +383,7 @@
       "결제 기한",
       "주문"
     ],
-    "pending_sender": "거래를 요청했습니다. 상대방의 확인을 기다리세요. 아직 결제하거나 상품을 전달하지 마세요.",
+    "pending_sender": "거래를 요청했습니다. 상대방의 확인을 기다리세요. 아직 결제하거나 상품을 전달하지 마세요. 상대방이 30분 안에 확인하지 않으면 주문이 만료됩니다.",
     "pending_recipient": "거래 요청을 받았습니다. 상품, 가격, 조건을 확인하고 30분 이내에 Confirm trade를 누르세요. 아직 결제하거나 상품을 전달하지 마세요.",
     "participants": {
       "confirmed": {
@@ -319,7 +400,7 @@
       },
       "waiting": {
         "buyer": "일치하는 입금이 감지되었습니다. 플랫폼 확인을 기다리고 재결제하지 마세요.",
-        "seller": "bot의 입금 확인과 배송 안내를 기다리세요. 스크린샷만 보고 상품을 전달하거나 구매자 대신 결제하지 마세요."
+        "seller": "시스템이 일치하는 입금을 감지했으며 결제 플랫폼의 확인을 기다리고 있습니다. 계속 기다려 주세요. 시스템에 결제 확인과 배송 안내가 표시되기 전에는 상품을 전달하지 마세요."
       },
       "paid": {
         "buyer": "결제가 확인되었습니다. 판매자의 상품 전달을 기다리세요.",
@@ -334,7 +415,7 @@
         "seller": "판매자는 주소와 네트워크 수수료를 확인하고 대금을 수령하세요. 보증 수수료가 부과되며 네트워크 수수료는 상품 대금에서 차감됩니다."
       },
       "releasing": {
-        "buyer": "판매자가 대금을 수령할 수 있습니다. 정산을 기다리세요. 다시 결제할 필요가 없습니다.",
+        "buyer": "판매자 대금 송금 처리 중입니다. 정산 결과를 기다리세요. 다시 결제할 필요가 없습니다.",
         "seller": "송금 처리 중입니다. 다시 신청하지 마세요."
       },
       "refund_ready": {
@@ -350,14 +431,41 @@
         "seller": "구매자 환불이 완료되어 주문이 종료되었습니다. 상품 전달이나 판매 대금 수령을 진행하지 마세요."
       },
       "completed": {
-        "buyer": "거래가 완료되었습니다. 추가 결제는 필요 없습니다.",
-        "seller": "거래가 완료되었습니다. 송금 내역을 확인하세요. 보존 요청이 없으면 약 5분 후 채널이 닫힙니다."
+        "buyer": "거래가 완료되었고 판매자에게 대금 송금이 확인되었습니다. 다시 결제할 필요가 없습니다.",
+        "seller": "거래가 완료되었고 시스템이 대금 송금을 확인했습니다. 수령 내역을 확인하세요."
       },
       "manual_refunded": {
-        "buyer": "환불이 완료되었습니다. 환불 입금 내역을 확인하세요.",
-        "seller": "구매자 환불이 완료되어 주문이 종료되었습니다. 상품 전달이나 판매 대금 수령을 진행하지 마세요."
+        "buyer": "관리자가 수동 환불 완료를 확인했습니다. 수령 확인 후 ‘종료 확인’을 누르세요. 미수령 또는 문제가 있으면 ‘문제 있음 / 유지’를 누르세요.",
+        "seller": "이 주문은 환불이 기록되었습니다. 상품을 보내지 마세요. 문제가 있으면 이 채널에서 관리자에게 문의하세요."
+      },
+      "cancelled": {
+        "buyer": "주문이 취소되었습니다. 결제하지 마세요. 이미 결제했다면 채널 보존을 요청하고 결제 기록과 함께 관리자에게 연락하세요.",
+        "seller": "주문이 취소되었습니다. 배송하거나 대금을 청구하지 마세요. 이미 전달했다면 채널 보존을 요청하고 전달 기록과 함께 관리자에게 연락하세요."
+      },
+      "expired": {
+        "buyer": "거래 확인 또는 결제 정보 조회 시간이 만료되어 주문이 끝났으며 채널이 자동 종료됩니다. 결제하거나 배송하지 마세요. 이미 진행했거나 확인이 필요하면 즉시 보존을 요청하고 관리자에게 연락하세요.",
+        "seller": "거래 확인 또는 결제 정보 조회 시간이 만료되어 주문이 끝났으며 채널이 자동 종료됩니다. 결제하거나 배송하지 마세요. 이미 진행했거나 확인이 필요하면 즉시 보존을 요청하고 관리자에게 연락하세요."
+      },
+      "disputed": {
+        "buyer": "관리자 확인이 필요합니다. 재결제하거나 상품을 전달하지 말고 증빙을 보관하세요.",
+        "seller": "관리자 확인이 필요합니다. 재결제하거나 상품을 전달하지 말고 증빙을 보관하세요."
+      },
+      "payment_review": {
+        "buyer": "관리자 확인이 필요합니다. 재결제하거나 상품을 전달하지 말고 증빙을 보관하세요.",
+        "seller": "관리자 확인이 필요합니다. 재결제하거나 상품을 전달하지 말고 증빙을 보관하세요."
+      },
+      "test_closed": {
+        "buyer": "이 주문은 테스트로 종료되었습니다. 자금은 보증 계좌에 남아 있고 수령은 비활성화되었습니다.",
+        "seller": "이 주문은 테스트로 종료되었습니다. 자금은 보증 계좌에 남아 있고 수령은 비활성화되었습니다."
+      },
+      "payment_timeout": {
+        "buyer": "추가 결제하지 마세요. 이미 결제했다면 관리자에게 연락하고 채널을 유지하세요.",
+        "seller": "결제 기한이 지났고 입금이 확인되지 않았습니다. 배송하지 마세요. 구매자가 결제했다고 하거나 이미 전달했다면 종료 카운트다운 전에 보존을 요청하고 관리자에게 연락하세요."
       }
-    }
+    },
+    "closure_notice": "보존 요청이 없으면 주문 종료 후 약 5분 뒤 채널을 닫습니다. 기록을 저장하세요. 문제가 있으면 채널 보존 및 관리자 연락 버튼을 누르세요.",
+    "expired": "거래 확인 또는 결제 정보 조회 시간이 만료되어 주문이 끝났으며 채널이 자동 종료됩니다. 결제하거나 배송하지 마세요. 이미 진행했거나 확인이 필요하면 즉시 보존을 요청하고 관리자에게 연락하세요.",
+    "pending_limit": "상대방이 30분 안에 확인하지 않으면 주문이 만료됩니다."
   },
   "Bahasa Indonesia": {
     "pending": "Pihak lain harus mengonfirmasi dalam 30 menit. Jangan membayar atau menyerahkan barang dulu.",
@@ -392,7 +500,7 @@
       "Batas pembayaran",
       "Pesanan"
     ],
-    "pending_sender": "Anda telah mengirim permintaan transaksi. Tunggu pihak lain mengonfirmasi. Jangan bayar atau serahkan barang dulu.",
+    "pending_sender": "Anda telah mengirim permintaan transaksi. Tunggu pihak lain mengonfirmasi. Jangan bayar atau serahkan barang dulu. Jika pihak lain tidak mengonfirmasi dalam 30 menit, pesanan kedaluwarsa.",
     "pending_recipient": "Anda menerima permintaan transaksi. Periksa barang, harga dan ketentuan, lalu klik Confirm trade dalam 30 menit. Jangan bayar atau serahkan barang dulu.",
     "participants": {
       "confirmed": {
@@ -409,7 +517,7 @@
       },
       "waiting": {
         "buyer": "Setoran yang cocok terdeteksi. Tunggu konfirmasi platform dan jangan membayar lagi.",
-        "seller": "Tunggu konfirmasi pembayaran dan pemberitahuan penyerahan dari bot. Jangan menyerahkan barang hanya berdasarkan tangkapan layar atau membayar untuk pembeli."
+        "seller": "Sistem mendeteksi setoran yang cocok dan menunggu konfirmasi penyedia pembayaran. Tetap tunggu. Jangan serahkan barang sebelum bot menampilkan pembayaran terkonfirmasi dan memberi pemberitahuan pengiriman."
       },
       "paid": {
         "buyer": "Pembayaran dikonfirmasi. Tunggu penjual menyerahkan barang.",
@@ -424,7 +532,7 @@
         "seller": "Penjual: klaim pembayaran dan periksa alamat serta biaya jaringan. Biaya penjaminan dikenakan; biaya jaringan dipotong dari harga barang."
       },
       "releasing": {
-        "buyer": "Penjual dapat mengklaim pembayaran. Tunggu penyelesaian; Anda tidak perlu membayar lagi.",
+        "buyer": "Sistem memproses pencairan ke penjual. Tunggu hasil penyelesaian; tidak perlu membayar lagi.",
         "seller": "Transfer sedang diproses. Jangan mengirim permintaan lagi."
       },
       "refund_ready": {
@@ -440,14 +548,41 @@
         "seller": "Dana pembeli telah dikembalikan dan pesanan ditutup. Jangan menyerahkan barang atau mengklaim pembayaran penjual."
       },
       "completed": {
-        "buyer": "Transaksi selesai. Tidak perlu membayar lagi.",
-        "seller": "Transaksi selesai. Periksa catatan transfer. Kanal ditutup sekitar 5 menit lagi kecuali diminta tetap dibuka."
+        "buyer": "Transaksi selesai. Sistem mengonfirmasi pencairan ke penjual telah dikirim. Tidak perlu membayar lagi.",
+        "seller": "Transaksi selesai. Sistem mengonfirmasi pencairan telah dikirim; periksa catatan penerimaan."
       },
       "manual_refunded": {
-        "buyer": "Pengembalian dana selesai. Periksa catatan dana yang Anda terima.",
-        "seller": "Dana pembeli telah dikembalikan dan pesanan ditutup. Jangan menyerahkan barang atau mengklaim pembayaran penjual."
+        "buyer": "Admin memverifikasi pengembalian manual. Periksa penerimaan lalu pilih Konfirmasi penutupan. Jika belum diterima atau ada masalah, pilih Ada masalah / Simpan.",
+        "seller": "Pengembalian pesanan ini telah dicatat. Jangan kirim barang. Hubungi admin di kanal ini jika perlu."
+      },
+      "cancelled": {
+        "buyer": "Pesanan dibatalkan. Jangan bayar. Jika sudah membayar, minta kanal ditahan dan hubungi admin dengan catatan pembayaran.",
+        "seller": "Pesanan dibatalkan. Jangan kirim atau klaim dana. Jika sudah menyerahkan, minta kanal ditahan dan hubungi admin dengan bukti penyerahan."
+      },
+      "expired": {
+        "buyer": "Konfirmasi atau permintaan informasi pembayaran kedaluwarsa. Pesanan berakhir dan kanal akan ditutup otomatis. Jangan bayar atau kirim. Jika sudah dilakukan atau perlu tinjauan, segera minta penahanan kanal dan hubungi admin.",
+        "seller": "Konfirmasi atau permintaan informasi pembayaran kedaluwarsa. Pesanan berakhir dan kanal akan ditutup otomatis. Jangan bayar atau kirim. Jika sudah dilakukan atau perlu tinjauan, segera minta penahanan kanal dan hubungi admin."
+      },
+      "disputed": {
+        "buyer": "Perlu pemeriksaan admin. Jangan membayar lagi atau menyerahkan barang. Simpan bukti pembayaran dan penyerahan.",
+        "seller": "Perlu pemeriksaan admin. Jangan membayar lagi atau menyerahkan barang. Simpan bukti pembayaran dan penyerahan."
+      },
+      "payment_review": {
+        "buyer": "Perlu pemeriksaan admin. Jangan membayar lagi atau menyerahkan barang. Simpan bukti pembayaran dan penyerahan.",
+        "seller": "Perlu pemeriksaan admin. Jangan membayar lagi atau menyerahkan barang. Simpan bukti pembayaran dan penyerahan."
+      },
+      "test_closed": {
+        "buyer": "Pesanan ditutup sebagai tes. Dana tetap di akun escrow; pengambilan dinonaktifkan.",
+        "seller": "Pesanan ditutup sebagai tes. Dana tetap di akun escrow; pengambilan dinonaktifkan."
+      },
+      "payment_timeout": {
+        "buyer": "Jangan bayar lagi. Jika sudah bayar, hubungi admin dan pertahankan kanal.",
+        "seller": "Batas pembayaran lewat dan pembayaran belum dikonfirmasi. Jangan kirim. Jika pembeli mengaku sudah bayar atau Anda sudah menyerahkan, minta kanal ditahan dan hubungi admin sebelum hitung mundur berakhir."
       }
-    }
+    },
+    "closure_notice": "Jika tidak ada permintaan penahanan, kanal ditutup sekitar 5 menit setelah pesanan berakhir. Simpan catatan; jika ada masalah, gunakan tahan kanal/hubungi admin.",
+    "expired": "Konfirmasi atau permintaan informasi pembayaran kedaluwarsa. Pesanan berakhir dan kanal akan ditutup otomatis. Jangan bayar atau kirim. Jika sudah dilakukan atau perlu tinjauan, segera minta penahanan kanal dan hubungi admin.",
+    "pending_limit": "Jika pihak lain tidak mengonfirmasi dalam 30 menit, pesanan kedaluwarsa."
   },
   "Tagalog": {
     "pending": "Dapat kumpirmahin ng kabilang panig sa loob ng 30 minuto. Huwag munang magbayad o magbigay ng item.",
@@ -482,7 +617,7 @@
       "Takdang bayaran",
       "Order"
     ],
-    "pending_sender": "Naipadala mo ang kahilingan sa transaksyon. Hintayin ang kumpirmasyon ng kabilang panig. Huwag munang magbayad o ibigay ang item.",
+    "pending_sender": "Naipadala mo ang kahilingan sa transaksyon. Hintayin ang kumpirmasyon ng kabilang panig. Huwag munang magbayad o ibigay ang item. Kung hindi magkumpirma ang kabilang panig sa loob ng 30 minuto, mag-e-expire ang order.",
     "pending_recipient": "Nakatanggap ka ng kahilingan sa transaksyon. Suriin ang item, presyo at kasunduan, at i-click ang Confirm trade sa loob ng 30 minuto. Huwag munang magbayad o ibigay ang item.",
     "participants": {
       "confirmed": {
@@ -499,7 +634,7 @@
       },
       "waiting": {
         "buyer": "May natukoy na katugmang deposito. Hintayin ang kumpirmasyon ng platform at huwag magbayad muli.",
-        "seller": "Hintayin ang kumpirmasyon ng bot at abiso na maaari nang ibigay ang item. Huwag umasa sa screenshot o magbayad para sa mamimili."
+        "seller": "Nakakita ang sistema ng tugmang deposito at naghihintay ng kumpirmasyon ng payment provider. Maghintay muna. Huwag ibigay ang item hanggang magpakita ang bot ng kumpirmadong bayad at abiso na maaari nang magpadala."
       },
       "paid": {
         "buyer": "Kumpirmado ang bayad. Hintayin ang nagbebenta na ibigay ang item.",
@@ -514,7 +649,7 @@
         "seller": "Nagbebenta: kunin ang bayad at suriin ang address at network fee. May bayad sa garantiya; ang network fee ay ibabawas sa presyo ng item."
       },
       "releasing": {
-        "buyer": "Maaari nang kunin ng nagbebenta ang bayad. Hintaying matapos ang pag-aayos; hindi mo kailangang magbayad muli.",
+        "buyer": "Pinoproseso ng sistema ang payout sa seller. Hintayin ang resulta; hindi kailangang magbayad muli.",
         "seller": "Pinoproseso ang transfer. Huwag magsumite muli."
       },
       "refund_ready": {
@@ -530,14 +665,41 @@
         "seller": "Naibalik na ang bayad sa mamimili at sarado na ang order. Huwag ibigay ang item o kunin ang bayad para sa nagbebenta."
       },
       "completed": {
-        "buyer": "Tapos na ang transaksyon. Hindi na kailangang magbayad.",
-        "seller": "Tapos na ang transaksyon. Suriin ang transfer. Isasara ang channel sa humigit-kumulang 5 minuto maliban kung ipapanatili."
+        "buyer": "Natapos na ang trade. Kinumpirma ng sistema ang pagpapadala ng payout sa seller. Hindi mo kailangang magbayad muli.",
+        "seller": "Natapos na ang trade. Kinumpirma ng sistema na naipadala ang payout; tingnan ang tala ng pagtanggap."
       },
       "manual_refunded": {
-        "buyer": "Tapos na ang refund. Suriin ang rekord ng natanggap mong refund.",
-        "seller": "Naibalik na ang bayad sa mamimili at sarado na ang order. Huwag ibigay ang item o kunin ang bayad para sa nagbebenta."
+        "buyer": "Na-verify ng admin ang manual refund. Suriin ang natanggap at piliin ang Kumpirmahin ang pagsara. Kung wala pa o may problema, piliin ang May isyu / Panatilihin.",
+        "seller": "Naitala na ang refund ng order na ito. Huwag ipadala ang item. Kontakin ang admin sa channel na ito kung kailangan."
+      },
+      "cancelled": {
+        "buyer": "Kinansela ang order. Huwag magbayad. Kung nagbayad na, hilinging panatilihin ang kanal at ibigay sa admin ang tala ng bayad.",
+        "seller": "Kinansela ang order. Huwag magpadala o mag-claim ng pera. Kung naibigay na ang item, hilinging panatilihin ang kanal at ibigay sa admin ang tala ng paghahatid."
+      },
+      "expired": {
+        "buyer": "Nag-expire ang pagkumpirma o pagkuha ng detalye ng bayad. Natapos ang order at awtomatikong isasara ang kanal. Huwag magbayad o magpadala. Kung nagawa na o kailangang suriin, agad humiling na panatilihin at kontakin ang admin.",
+        "seller": "Nag-expire ang pagkumpirma o pagkuha ng detalye ng bayad. Natapos ang order at awtomatikong isasara ang kanal. Huwag magbayad o magpadala. Kung nagawa na o kailangang suriin, agad humiling na panatilihin at kontakin ang admin."
+      },
+      "disputed": {
+        "buyer": "Kailangan ng pagsusuri ng admin. Huwag magbayad muli o ibigay ang item. Itago ang mga katibayan.",
+        "seller": "Kailangan ng pagsusuri ng admin. Huwag magbayad muli o ibigay ang item. Itago ang mga katibayan."
+      },
+      "payment_review": {
+        "buyer": "Kailangan ng pagsusuri ng admin. Huwag magbayad muli o ibigay ang item. Itago ang mga katibayan.",
+        "seller": "Kailangan ng pagsusuri ng admin. Huwag magbayad muli o ibigay ang item. Itago ang mga katibayan."
+      },
+      "test_closed": {
+        "buyer": "Isinara ang order bilang pagsubok. Nasa escrow account pa ang pera; hindi puwedeng kunin.",
+        "seller": "Isinara ang order bilang pagsubok. Nasa escrow account pa ang pera; hindi puwedeng kunin."
+      },
+      "payment_timeout": {
+        "buyer": "Huwag magbayad muli. Kung bayad na, kontakin ang admin at panatilihin ang channel.",
+        "seller": "Lumipas ang deadline at hindi kumpirmado ang bayad. Huwag magpadala. Kung sinabi ng buyer na bayad na o naibigay mo na ang item, humiling na panatilihin at kontakin ang admin bago matapos ang countdown."
       }
-    }
+    },
+    "closure_notice": "Kung walang hiling na panatilihin, magsasara ang kanal mga 5 minuto matapos ang order. I-save ang mga tala; kung may problema, gamitin ang panatilihin ang kanal/kontakin ang admin.",
+    "expired": "Nag-expire ang pagkumpirma o pagkuha ng detalye ng bayad. Natapos ang order at awtomatikong isasara ang kanal. Huwag magbayad o magpadala. Kung nagawa na o kailangang suriin, agad humiling na panatilihin at kontakin ang admin.",
+    "pending_limit": "Kung hindi magkumpirma ang kabilang panig sa loob ng 30 minuto, mag-e-expire ang order."
   },
   "Bahasa Melayu": {
     "pending": "Pihak satu lagi perlu mengesahkan dalam 30 minit. Jangan bayar atau serahkan barang dahulu.",
@@ -572,7 +734,7 @@
       "Tarikh akhir bayaran",
       "Pesanan"
     ],
-    "pending_sender": "Anda telah menghantar permintaan urus niaga. Tunggu pengesahan pihak satu lagi. Jangan bayar atau serahkan barang dahulu.",
+    "pending_sender": "Anda telah menghantar permintaan urus niaga. Tunggu pengesahan pihak satu lagi. Jangan bayar atau serahkan barang dahulu. Jika pihak lain tidak mengesahkan dalam 30 minit, pesanan tamat tempoh.",
     "pending_recipient": "Anda menerima permintaan urus niaga. Semak barang, harga dan syarat, kemudian klik Confirm trade dalam 30 minit. Jangan bayar atau serahkan barang dahulu.",
     "participants": {
       "confirmed": {
@@ -589,7 +751,7 @@
       },
       "waiting": {
         "buyer": "Deposit sepadan dikesan. Tunggu pengesahan platform dan jangan bayar lagi.",
-        "seller": "Tunggu pengesahan bayaran dan notis penyerahan daripada bot. Jangan serahkan barang berdasarkan tangkap layar atau bayar bagi pihak pembeli."
+        "seller": "Sistem mengesan deposit yang sepadan dan sedang menunggu pengesahan penyedia pembayaran. Sila terus menunggu. Jangan serahkan barang sebelum bot memaparkan pembayaran disahkan dan memberi notis penghantaran."
       },
       "paid": {
         "buyer": "Bayaran disahkan. Tunggu penjual menyerahkan barang.",
@@ -604,7 +766,7 @@
         "seller": "Penjual: tuntut bayaran dan semak alamat serta caj rangkaian. Caj jaminan dikenakan; caj rangkaian ditolak daripada harga barang."
       },
       "releasing": {
-        "buyer": "Penjual boleh menuntut bayaran. Tunggu penyelesaian; anda tidak perlu membayar lagi.",
+        "buyer": "Sistem memproses bayaran kepada penjual. Tunggu keputusan penyelesaian; tidak perlu membayar lagi.",
         "seller": "Pemindahan sedang diproses. Jangan hantar permohonan lagi."
       },
       "refund_ready": {
@@ -620,14 +782,41 @@
         "seller": "Bayaran balik pembeli selesai dan pesanan ditutup. Jangan serahkan barang atau tuntut bayaran penjual."
       },
       "completed": {
-        "buyer": "Urus niaga selesai. Tiada bayaran tambahan diperlukan.",
-        "seller": "Urus niaga selesai. Semak rekod pemindahan. Saluran ditutup dalam kira-kira 5 minit kecuali diminta dikekalkan."
+        "buyer": "Transaksi selesai. Sistem mengesahkan bayaran kepada penjual telah dihantar. Anda tidak perlu membayar lagi.",
+        "seller": "Transaksi selesai. Sistem mengesahkan bayaran telah dihantar; semak rekod penerimaan."
       },
       "manual_refunded": {
-        "buyer": "Bayaran balik selesai. Semak rekod wang yang anda terima.",
-        "seller": "Bayaran balik pembeli selesai dan pesanan ditutup. Jangan serahkan barang atau tuntut bayaran penjual."
+        "buyer": "Pentadbir mengesahkan bayaran balik manual. Semak penerimaan lalu pilih Sahkan penutupan. Jika belum diterima atau ada isu, pilih Ada isu / Kekalkan.",
+        "seller": "Bayaran balik pesanan ini telah direkodkan. Jangan hantar barang. Hubungi pentadbir dalam saluran ini jika perlu."
+      },
+      "cancelled": {
+        "buyer": "Pesanan dibatalkan. Jangan bayar. Jika telah membayar, minta saluran dikekalkan dan hubungi pentadbir dengan rekod bayaran.",
+        "seller": "Pesanan dibatalkan. Jangan hantar atau tuntut dana. Jika telah menyerahkan, minta saluran dikekalkan dan hubungi pentadbir dengan bukti penyerahan."
+      },
+      "expired": {
+        "buyer": "Pengesahan atau permintaan maklumat bayaran tamat tempoh. Pesanan berakhir dan saluran akan ditutup automatik. Jangan bayar atau hantar. Jika telah dilakukan atau perlu semakan, segera minta pengekalan dan hubungi pentadbir.",
+        "seller": "Pengesahan atau permintaan maklumat bayaran tamat tempoh. Pesanan berakhir dan saluran akan ditutup automatik. Jangan bayar atau hantar. Jika telah dilakukan atau perlu semakan, segera minta pengekalan dan hubungi pentadbir."
+      },
+      "disputed": {
+        "buyer": "Semakan pentadbir diperlukan. Jangan bayar lagi atau serahkan barang. Simpan bukti bayaran dan penyerahan.",
+        "seller": "Semakan pentadbir diperlukan. Jangan bayar lagi atau serahkan barang. Simpan bukti bayaran dan penyerahan."
+      },
+      "payment_review": {
+        "buyer": "Semakan pentadbir diperlukan. Jangan bayar lagi atau serahkan barang. Simpan bukti bayaran dan penyerahan.",
+        "seller": "Semakan pentadbir diperlukan. Jangan bayar lagi atau serahkan barang. Simpan bukti bayaran dan penyerahan."
+      },
+      "test_closed": {
+        "buyer": "Pesanan ditutup sebagai ujian. Dana kekal dalam akaun eskrow; tuntutan dinyahaktifkan.",
+        "seller": "Pesanan ditutup sebagai ujian. Dana kekal dalam akaun eskrow; tuntutan dinyahaktifkan."
+      },
+      "payment_timeout": {
+        "buyer": "Jangan bayar lagi. Jika sudah bayar, hubungi pentadbir dan kekalkan saluran.",
+        "seller": "Tempoh bayaran tamat dan bayaran belum disahkan. Jangan hantar. Jika pembeli menyatakan telah bayar atau anda telah menyerahkan, minta saluran dikekalkan dan hubungi pentadbir sebelum kira detik berakhir."
       }
-    }
+    },
+    "closure_notice": "Jika tiada permintaan pengekalan, saluran ditutup sekitar 5 minit selepas pesanan berakhir. Simpan rekod; jika ada isu, gunakan kekalkan saluran/hubungi pentadbir.",
+    "expired": "Pengesahan atau permintaan maklumat bayaran tamat tempoh. Pesanan berakhir dan saluran akan ditutup automatik. Jangan bayar atau hantar. Jika telah dilakukan atau perlu semakan, segera minta pengekalan dan hubungi pentadbir.",
+    "pending_limit": "Jika pihak lain tidak mengesahkan dalam 30 minit, pesanan tamat tempoh."
   },
   "Português": {
     "pending": "A outra parte deve confirmar em 30 minutos. Não pague nem entregue ainda.",
@@ -662,7 +851,7 @@
       "Prazo de pagamento",
       "Pedido"
     ],
-    "pending_sender": "Você enviou esta solicitação de negociação. Aguarde a confirmação da outra parte. Não pague nem entregue ainda.",
+    "pending_sender": "Você enviou esta solicitação de negociação. Aguarde a confirmação da outra parte. Não pague nem entregue ainda. Se a outra parte não confirmar em 30 minutos, o pedido expirará.",
     "pending_recipient": "Você recebeu uma solicitação de negociação. Confira item, preço e condições e clique em Confirm trade em até 30 minutos. Não pague nem entregue ainda.",
     "participants": {
       "confirmed": {
@@ -679,7 +868,7 @@
       },
       "waiting": {
         "buyer": "Depósito correspondente detectado. Aguarde a confirmação da plataforma e não pague novamente.",
-        "seller": "Aguarde a confirmação de pagamento e o aviso de entrega do bot. Não entregue com base em capturas de tela nem pague pelo comprador."
+        "seller": "O sistema detectou um depósito correspondente e aguarda a confirmação do provedor de pagamento. Continue aguardando. Não entregue o item até o bot confirmar o pagamento e enviar a orientação de entrega."
       },
       "paid": {
         "buyer": "Pagamento confirmado. Aguarde a entrega do vendedor.",
@@ -694,7 +883,7 @@
         "seller": "Vendedor: solicite o pagamento e confira endereço e taxa de rede. A taxa de garantia é cobrada; a taxa de rede é descontada do preço do item."
       },
       "releasing": {
-        "buyer": "O vendedor pode solicitar o pagamento. Aguarde a liquidação; você não precisa pagar novamente.",
+        "buyer": "O sistema processa o pagamento ao vendedor. Aguarde a liquidação; não pague novamente.",
         "seller": "Transferência em processamento. Não solicite novamente."
       },
       "refund_ready": {
@@ -710,14 +899,41 @@
         "seller": "O reembolso do comprador foi concluído e o pedido está encerrado. Não entregue nem solicite pagamento de vendedor."
       },
       "completed": {
-        "buyer": "Negociação concluída. Não é necessário pagar novamente.",
-        "seller": "Negociação concluída. Confira a transferência. O canal fecha em cerca de 5 minutos, salvo pedido de retenção."
+        "buyer": "Negociação concluída. O sistema confirmou o envio ao vendedor. Não é necessário pagar novamente.",
+        "seller": "Negociação concluída. O sistema confirmou o envio do pagamento; confira os registros de recebimento."
       },
       "manual_refunded": {
-        "buyer": "Reembolso concluído. Confira o recebimento do seu reembolso.",
-        "seller": "O reembolso do comprador foi concluído e o pedido está encerrado. Não entregue nem solicite pagamento de vendedor."
+        "buyer": "Um administrador verificou o reembolso manual. Confira o recebimento e escolha Confirmar fechamento. Se não recebeu ou houver problema, use Problema / Manter.",
+        "seller": "O reembolso deste pedido foi registrado. Não entregue o item. Se necessário, contate um administrador neste canal."
+      },
+      "cancelled": {
+        "buyer": "Pedido cancelado. Não pague. Se já pagou, peça retenção do canal e contate o administrador com os registros de pagamento.",
+        "seller": "Pedido cancelado. Não entregue nem solicite pagamento. Se já entregou, peça retenção do canal e contate o administrador com os registros de entrega."
+      },
+      "expired": {
+        "buyer": "A confirmação ou obtenção dos dados de pagamento expirou. O pedido terminou e o canal entrará no fechamento automático. Não pague nem entregue. Se já o fez ou precisa de revisão, solicite retenção imediatamente e contate o administrador.",
+        "seller": "A confirmação ou obtenção dos dados de pagamento expirou. O pedido terminou e o canal entrará no fechamento automático. Não pague nem entregue. Se já o fez ou precisa de revisão, solicite retenção imediatamente e contate o administrador."
+      },
+      "disputed": {
+        "buyer": "É necessária revisão administrativa. Não pague novamente nem entregue. Guarde os comprovantes.",
+        "seller": "É necessária revisão administrativa. Não pague novamente nem entregue. Guarde os comprovantes."
+      },
+      "payment_review": {
+        "buyer": "É necessária revisão administrativa. Não pague novamente nem entregue. Guarde os comprovantes.",
+        "seller": "É necessária revisão administrativa. Não pague novamente nem entregue. Guarde os comprovantes."
+      },
+      "test_closed": {
+        "buyer": "O pedido foi encerrado como teste. Os fundos permanecem na conta de custódia; o resgate está desativado.",
+        "seller": "O pedido foi encerrado como teste. Os fundos permanecem na conta de custódia; o resgate está desativado."
+      },
+      "payment_timeout": {
+        "buyer": "Não pague novamente. Se já pagou, contate um administrador e mantenha o canal aberto.",
+        "seller": "O prazo de pagamento passou e não há confirmação. Não entregue. Se o comprador disser que pagou ou você já entregou, peça retenção e contate o administrador antes do fim da contagem."
       }
-    }
+    },
+    "closure_notice": "Sem pedido de retenção, o canal fecha cerca de 5 minutos após o término do pedido. Salve os registros; se houver problema, use manter canal/contatar administrador.",
+    "expired": "A confirmação ou obtenção dos dados de pagamento expirou. O pedido terminou e o canal entrará no fechamento automático. Não pague nem entregue. Se já o fez ou precisa de revisão, solicite retenção imediatamente e contate o administrador.",
+    "pending_limit": "Se a outra parte não confirmar em 30 minutos, o pedido expirará."
   },
   "Español": {
     "pending": "La otra parte debe confirmar en 30 minutos. No pagues ni entregues todavía.",
@@ -752,7 +968,7 @@
       "Plazo de pago",
       "Pedido"
     ],
-    "pending_sender": "Has enviado esta solicitud de intercambio. Espera la confirmación de la otra parte. No pagues ni entregues todavía.",
+    "pending_sender": "Has enviado esta solicitud de intercambio. Espera la confirmación de la otra parte. No pagues ni entregues todavía. Si la otra parte no confirma en 30 minutos, el pedido vencerá.",
     "pending_recipient": "Has recibido una solicitud de intercambio. Revisa el artículo, precio y condiciones y pulsa Confirm trade en 30 minutos. No pagues ni entregues todavía.",
     "participants": {
       "confirmed": {
@@ -769,7 +985,7 @@
       },
       "waiting": {
         "buyer": "Se detectó un depósito coincidente. Espera la confirmación de la plataforma y no pagues otra vez.",
-        "seller": "Espera la confirmación de pago y el aviso de entrega del bot. No entregues basándote en capturas ni pagues por el comprador."
+        "seller": "El sistema detectó un ingreso coincidente y espera la confirmación del proveedor de pago. Sigue esperando. No entregues el artículo hasta que el bot confirme el pago y te avise que puedes enviarlo."
       },
       "paid": {
         "buyer": "Pago confirmado. Espera a que el vendedor entregue el artículo.",
@@ -784,7 +1000,7 @@
         "seller": "Vendedor: solicita el pago y verifica la dirección y comisión de red. Se cobra la comisión de garantía; la comisión de red se descuenta del precio del artículo."
       },
       "releasing": {
-        "buyer": "El vendedor puede solicitar el pago. Espera la liquidación; no necesitas pagar otra vez.",
+        "buyer": "El sistema procesa el pago al vendedor. Espera la liquidación; no pagues de nuevo.",
         "seller": "Transferencia en curso. No repitas la solicitud."
       },
       "refund_ready": {
@@ -800,14 +1016,41 @@
         "seller": "El reembolso del comprador se ha completado y el pedido está cerrado. No entregues ni solicites el pago del vendedor."
       },
       "completed": {
-        "buyer": "Operación completada. No es necesario pagar de nuevo.",
-        "seller": "Operación completada. Revisa la transferencia. El canal se cerrará en unos 5 minutos salvo que se solicite conservarlo."
+        "buyer": "Operación completada. El sistema confirmó el envío al vendedor. No debes pagar de nuevo.",
+        "seller": "Operación completada. El sistema confirmó el envío del pago; revisa tus registros de recepción."
       },
       "manual_refunded": {
-        "buyer": "Reembolso completado. Comprueba la recepción de tu reembolso.",
-        "seller": "El reembolso del comprador se ha completado y el pedido está cerrado. No entregues ni solicites el pago del vendedor."
+        "buyer": "Un administrador verificó el reembolso manual. Comprueba la recepción y pulsa Confirmar cierre. Si no lo recibiste o hay un problema, usa Problema / Mantener.",
+        "seller": "Se registró el reembolso de este pedido. No entregues el artículo. Si lo necesitas, contacta con un administrador en este canal."
+      },
+      "cancelled": {
+        "buyer": "Pedido cancelado. No pagues. Si ya pagaste, solicita conservar el canal y contacta al administrador con tus registros de pago.",
+        "seller": "Pedido cancelado. No entregues ni reclames fondos. Si ya entregaste, solicita conservar el canal y contacta al administrador con los registros de entrega."
+      },
+      "expired": {
+        "buyer": "Venció la confirmación o la obtención de los datos de pago. El pedido terminó y el canal pasará al cierre automático. No pagues ni entregues. Si ya lo hiciste o necesitas revisión, solicita conservarlo de inmediato y contacta al administrador.",
+        "seller": "Venció la confirmación o la obtención de los datos de pago. El pedido terminó y el canal pasará al cierre automático. No pagues ni entregues. Si ya lo hiciste o necesitas revisión, solicita conservarlo de inmediato y contacta al administrador."
+      },
+      "disputed": {
+        "buyer": "Se requiere revisión administrativa. No vuelvas a pagar ni entregues. Conserva los comprobantes.",
+        "seller": "Se requiere revisión administrativa. No vuelvas a pagar ni entregues. Conserva los comprobantes."
+      },
+      "payment_review": {
+        "buyer": "Se requiere revisión administrativa. No vuelvas a pagar ni entregues. Conserva los comprobantes.",
+        "seller": "Se requiere revisión administrativa. No vuelvas a pagar ni entregues. Conserva los comprobantes."
+      },
+      "test_closed": {
+        "buyer": "El pedido se cerró como prueba. Los fondos permanecen en la cuenta de garantía; el cobro está desactivado.",
+        "seller": "El pedido se cerró como prueba. Los fondos permanecen en la cuenta de garantía; el cobro está desactivado."
+      },
+      "payment_timeout": {
+        "buyer": "No vuelvas a pagar. Si ya pagaste, contacta con un administrador y mantén el canal abierto.",
+        "seller": "Venció el pago y no está confirmado. No entregues. Si el comprador dice que pagó o ya entregaste, solicita conservar el canal y contacta al administrador antes del fin de la cuenta atrás."
       }
-    }
+    },
+    "closure_notice": "Sin solicitud de conservación, el canal se cerrará unos 5 minutos después de terminar el pedido. Guarda los registros; si hay problemas, usa conservar canal/contactar administrador.",
+    "expired": "Venció la confirmación o la obtención de los datos de pago. El pedido terminó y el canal pasará al cierre automático. No pagues ni entregues. Si ya lo hiciste o necesitas revisión, solicita conservarlo de inmediato y contacta al administrador.",
+    "pending_limit": "Si la otra parte no confirma en 30 minutos, el pedido vencerá."
   },
   "ภาษาไทย": {
     "pending": "อีกฝ่ายต้องยืนยันภายใน 30 นาที อย่าเพิ่งชำระเงินหรือส่งสินค้า",
@@ -842,7 +1085,7 @@
       "กำหนดชำระ",
       "คำสั่งซื้อ"
     ],
-    "pending_sender": "คุณส่งคำขอซื้อขายแล้ว โปรดรออีกฝ่ายยืนยัน อย่าเพิ่งชำระเงินหรือส่งสินค้า",
+    "pending_sender": "คุณส่งคำขอซื้อขายแล้ว โปรดรออีกฝ่ายยืนยัน อย่าเพิ่งชำระเงินหรือส่งสินค้า หากอีกฝ่ายไม่ยืนยันภายใน 30 นาที รายการจะหมดอายุ",
     "pending_recipient": "คุณได้รับคำขอซื้อขาย โปรดตรวจสอบสินค้า ราคา และข้อตกลง แล้วกด Confirm trade ภายใน 30 นาที อย่าเพิ่งชำระเงินหรือส่งสินค้า",
     "participants": {
       "confirmed": {
@@ -859,7 +1102,7 @@
       },
       "waiting": {
         "buyer": "พบเงินเข้าที่ตรงกัน โปรดรอแพลตฟอร์มยืนยันและอย่าชำระซ้ำ",
-        "seller": "รอ bot ยืนยันการชำระเงินและแจ้งให้ส่งสินค้าก่อน อย่าส่งสินค้าจากภาพหน้าจอเพียงอย่างเดียวหรือชำระแทนผู้ซื้อ"
+        "seller": "ระบบตรวจพบเงินเข้าที่ตรงกันและกำลังรอผู้ให้บริการชำระเงินยืนยัน โปรดรอต่อไป อย่าส่งมอบสินค้าจนกว่าบอตจะแสดงว่าชำระเงินยืนยันแล้วและแจ้งให้ส่งสินค้า"
       },
       "paid": {
         "buyer": "ยืนยันการชำระเงินแล้ว โปรดรอผู้ขายส่งสินค้า",
@@ -874,7 +1117,7 @@
         "seller": "ผู้ขาย: รับเงินและตรวจสอบที่อยู่กับค่าธรรมเนียมเครือข่าย ระบบเก็บค่าค้ำประกันและหักค่าธรรมเนียมเครือข่ายจากราคาสินค้า"
       },
       "releasing": {
-        "buyer": "ผู้ขายสามารถรับเงินได้ โปรดรอการชำระบัญชี คุณไม่ต้องชำระอีก",
+        "buyer": "ระบบกำลังโอนเงินค่าสินค้าให้ผู้ขาย โปรดรอผล ไม่ต้องชำระเงินอีก",
         "seller": "กำลังดำเนินการโอน อย่าส่งคำขอซ้ำ"
       },
       "refund_ready": {
@@ -890,14 +1133,41 @@
         "seller": "คืนเงินให้ผู้ซื้อสำเร็จและปิดคำสั่งซื้อแล้ว อย่าส่งสินค้าหรือขอรับเงินของผู้ขาย"
       },
       "completed": {
-        "buyer": "การซื้อขายเสร็จสมบูรณ์ ไม่ต้องชำระเพิ่มเติม",
-        "seller": "การซื้อขายเสร็จสมบูรณ์ โปรดตรวจสอบรายการโอน ช่องจะปิดในประมาณ 5 นาทีหากไม่มีคำขอให้เก็บไว้"
+        "buyer": "การซื้อขายเสร็จสิ้น ระบบยืนยันว่าโอนเงินให้ผู้ขายออกแล้ว ไม่ต้องชำระเงินอีก",
+        "seller": "การซื้อขายเสร็จสิ้น ระบบยืนยันว่าโอนเงินค่าสินค้าออกแล้ว โปรดตรวจสอบรายการรับเงิน"
       },
       "manual_refunded": {
-        "buyer": "คืนเงินสำเร็จ โปรดตรวจสอบยอดคืนเงินที่คุณได้รับ",
-        "seller": "คืนเงินให้ผู้ซื้อสำเร็จและปิดคำสั่งซื้อแล้ว อย่าส่งสินค้าหรือขอรับเงินของผู้ขาย"
+        "buyer": "ผู้ดูแลตรวจสอบการคืนเงินด้วยตนเองแล้ว ตรวจสอบยอดและกดยืนยันปิดช่อง หากยังไม่ได้รับหรือมีปัญหา ให้กดมีปัญหา / เก็บไว้",
+        "seller": "คำสั่งซื้อนี้บันทึกคืนเงินแล้ว อย่าส่งสินค้า หากมีปัญหาให้ติดต่อผู้ดูแลในช่องนี้"
+      },
+      "cancelled": {
+        "buyer": "รายการถูกยกเลิก อย่าชำระเงิน หากชำระแล้วให้ขอเก็บช่องและติดต่อผู้ดูแลพร้อมหลักฐานชำระเงิน",
+        "seller": "รายการถูกยกเลิก อย่าส่งสินค้าหรือรับเงิน หากส่งมอบแล้วให้ขอเก็บช่องและติดต่อผู้ดูแลพร้อมหลักฐานส่งมอบ"
+      },
+      "expired": {
+        "buyer": "หมดเวลายืนยันหรือขอข้อมูลชำระเงิน รายการสิ้นสุดและช่องจะเข้าสู่การปิดอัตโนมัติ อย่าชำระเงินหรือส่งสินค้า หากทำไปแล้วหรือต้องการตรวจสอบ ให้ขอเก็บช่องทันทีและติดต่อผู้ดูแล",
+        "seller": "หมดเวลายืนยันหรือขอข้อมูลชำระเงิน รายการสิ้นสุดและช่องจะเข้าสู่การปิดอัตโนมัติ อย่าชำระเงินหรือส่งสินค้า หากทำไปแล้วหรือต้องการตรวจสอบ ให้ขอเก็บช่องทันทีและติดต่อผู้ดูแล"
+      },
+      "disputed": {
+        "buyer": "ต้องให้ผู้ดูแลตรวจสอบ อย่าชำระซ้ำหรือส่งสินค้า โปรดเก็บหลักฐาน",
+        "seller": "ต้องให้ผู้ดูแลตรวจสอบ อย่าชำระซ้ำหรือส่งสินค้า โปรดเก็บหลักฐาน"
+      },
+      "payment_review": {
+        "buyer": "ต้องให้ผู้ดูแลตรวจสอบ อย่าชำระซ้ำหรือส่งสินค้า โปรดเก็บหลักฐาน",
+        "seller": "ต้องให้ผู้ดูแลตรวจสอบ อย่าชำระซ้ำหรือส่งสินค้า โปรดเก็บหลักฐาน"
+      },
+      "test_closed": {
+        "buyer": "คำสั่งซื้อนี้ปิดแบบทดสอบ เงินยังอยู่ในบัญชีค้ำประกันและปิดการรับเงินแล้ว",
+        "seller": "คำสั่งซื้อนี้ปิดแบบทดสอบ เงินยังอยู่ในบัญชีค้ำประกันและปิดการรับเงินแล้ว"
+      },
+      "payment_timeout": {
+        "buyer": "อย่าชำระเงินซ้ำ หากจ่ายแล้วให้ติดต่อผู้ดูแลและเก็บช่องไว้",
+        "seller": "หมดเวลาชำระและยังไม่ยืนยันเงินเข้า อย่าส่งสินค้า หากผู้ซื้อแจ้งว่าชำระแล้วหรือส่งสินค้าไปแล้ว ให้ขอเก็บช่องและติดต่อผู้ดูแลก่อนนับถอยหลังจบ"
       }
-    }
+    },
+    "closure_notice": "หากไม่มีคำขอเก็บช่อง ช่องจะปิดประมาณ 5 นาทีหลังรายการสิ้นสุด โปรดบันทึกประวัติ หากมีปัญหาให้กดเก็บช่อง/ติดต่อผู้ดูแล",
+    "expired": "หมดเวลายืนยันหรือขอข้อมูลชำระเงิน รายการสิ้นสุดและช่องจะเข้าสู่การปิดอัตโนมัติ อย่าชำระเงินหรือส่งสินค้า หากทำไปแล้วหรือต้องการตรวจสอบ ให้ขอเก็บช่องทันทีและติดต่อผู้ดูแล",
+    "pending_limit": "หากอีกฝ่ายไม่ยืนยันภายใน 30 นาที รายการจะหมดอายุ"
   },
   "Tiếng Việt": {
     "pending": "Bên còn lại cần xác nhận trong 30 phút. Chưa thanh toán hoặc giao hàng.",
@@ -932,7 +1202,7 @@
       "Hạn thanh toán",
       "Đơn hàng"
     ],
-    "pending_sender": "Bạn đã gửi yêu cầu giao dịch. Hãy chờ bên còn lại xác nhận. Chưa thanh toán hoặc giao hàng.",
+    "pending_sender": "Bạn đã gửi yêu cầu giao dịch. Hãy chờ bên còn lại xác nhận. Chưa thanh toán hoặc giao hàng. Nếu bên kia không xác nhận trong 30 phút, đơn sẽ hết hạn.",
     "pending_recipient": "Bạn nhận được yêu cầu giao dịch. Kiểm tra hàng hóa, giá và thỏa thuận, rồi nhấn Confirm trade trong 30 phút. Chưa thanh toán hoặc giao hàng.",
     "participants": {
       "confirmed": {
@@ -949,7 +1219,7 @@
       },
       "waiting": {
         "buyer": "Đã phát hiện khoản nạp khớp. Chờ nền tảng xác nhận và không thanh toán lần nữa.",
-        "seller": "Đợi bot xác nhận thanh toán và thông báo giao hàng. Không giao chỉ dựa vào ảnh chụp hoặc thanh toán thay người mua."
+        "seller": "Hệ thống phát hiện khoản nạp khớp và đang chờ nền tảng thanh toán xác nhận. Hãy tiếp tục chờ. Không giao hàng trước khi bot xác nhận thanh toán và thông báo được giao hàng."
       },
       "paid": {
         "buyer": "Thanh toán đã được xác nhận. Hãy chờ người bán giao hàng.",
@@ -964,7 +1234,7 @@
         "seller": "Người bán: nhận tiền và kiểm tra địa chỉ cùng phí mạng. Phí bảo chứng được thu; phí mạng trừ vào giá hàng."
       },
       "releasing": {
-        "buyer": "Người bán có thể nhận tiền. Hãy chờ quyết toán; bạn không cần trả thêm.",
+        "buyer": "Hệ thống đang chuyển tiền cho người bán. Hãy chờ kết quả; không cần thanh toán lại.",
         "seller": "Đang xử lý chuyển tiền. Không gửi yêu cầu lần nữa."
       },
       "refund_ready": {
@@ -980,13 +1250,40 @@
         "seller": "Đã hoàn tiền cho người mua và đóng đơn. Không giao hàng hoặc yêu cầu nhận tiền bán hàng."
       },
       "completed": {
-        "buyer": "Giao dịch hoàn tất. Không cần thanh toán thêm.",
-        "seller": "Giao dịch hoàn tất. Kiểm tra lịch sử chuyển tiền. Kênh đóng sau khoảng 5 phút trừ khi được yêu cầu giữ lại."
+        "buyer": "Giao dịch hoàn tất. Hệ thống xác nhận đã chuyển tiền cho người bán. Bạn không cần thanh toán lại.",
+        "seller": "Giao dịch hoàn tất. Hệ thống xác nhận đã chuyển tiền hàng; hãy kiểm tra hồ sơ nhận tiền."
       },
       "manual_refunded": {
-        "buyer": "Hoàn tiền thành công. Hãy kiểm tra khoản hoàn tiền bạn nhận được.",
-        "seller": "Đã hoàn tiền cho người mua và đóng đơn. Không giao hàng hoặc yêu cầu nhận tiền bán hàng."
+        "buyer": "Quản trị viên đã xác minh hoàn thủ công. Kiểm tra tiền rồi chọn Xác nhận đóng. Nếu chưa nhận hoặc có vấn đề, chọn Có vấn đề / Giữ kênh.",
+        "seller": "Đơn đã ghi nhận hoàn tiền. Không giao hàng. Liên hệ quản trị viên trong kênh nếu cần."
+      },
+      "cancelled": {
+        "buyer": "Đơn đã hủy. Không thanh toán. Nếu đã trả, yêu cầu giữ kênh và liên hệ quản trị viên kèm hồ sơ thanh toán.",
+        "seller": "Đơn đã hủy. Không giao hàng hoặc nhận tiền. Nếu đã giao, yêu cầu giữ kênh và liên hệ quản trị viên kèm hồ sơ giao hàng."
+      },
+      "expired": {
+        "buyer": "Đã hết hạn xác nhận hoặc lấy thông tin thanh toán. Đơn kết thúc và kênh sẽ tự đóng. Không trả tiền hoặc giao hàng. Nếu đã làm hoặc cần kiểm tra, hãy yêu cầu giữ kênh ngay và liên hệ quản trị viên.",
+        "seller": "Đã hết hạn xác nhận hoặc lấy thông tin thanh toán. Đơn kết thúc và kênh sẽ tự đóng. Không trả tiền hoặc giao hàng. Nếu đã làm hoặc cần kiểm tra, hãy yêu cầu giữ kênh ngay và liên hệ quản trị viên."
+      },
+      "disputed": {
+        "buyer": "Cần quản trị viên kiểm tra. Không trả thêm hoặc giao hàng. Giữ bằng chứng thanh toán và giao nhận.",
+        "seller": "Cần quản trị viên kiểm tra. Không trả thêm hoặc giao hàng. Giữ bằng chứng thanh toán và giao nhận."
+      },
+      "payment_review": {
+        "buyer": "Cần quản trị viên kiểm tra. Không trả thêm hoặc giao hàng. Giữ bằng chứng thanh toán và giao nhận.",
+        "seller": "Cần quản trị viên kiểm tra. Không trả thêm hoặc giao hàng. Giữ bằng chứng thanh toán và giao nhận."
+      },
+      "test_closed": {
+        "buyer": "Đơn đã đóng dưới dạng thử nghiệm. Tiền vẫn trong tài khoản bảo chứng; chức năng nhận bị tắt.",
+        "seller": "Đơn đã đóng dưới dạng thử nghiệm. Tiền vẫn trong tài khoản bảo chứng; chức năng nhận bị tắt."
+      },
+      "payment_timeout": {
+        "buyer": "Không thanh toán lại. Nếu đã trả, liên hệ quản trị viên và giữ kênh.",
+        "seller": "Đã quá hạn thanh toán và chưa xác nhận tiền vào. Không giao hàng. Nếu người mua nói đã trả hoặc bạn đã giao, yêu cầu giữ kênh và liên hệ quản trị viên trước khi hết đếm ngược."
       }
-    }
+    },
+    "closure_notice": "Nếu không có yêu cầu giữ lại, kênh sẽ đóng khoảng 5 phút sau khi đơn kết thúc. Hãy lưu hồ sơ; nếu có vấn đề, dùng nút giữ kênh/liên hệ quản trị viên.",
+    "expired": "Đã hết hạn xác nhận hoặc lấy thông tin thanh toán. Đơn kết thúc và kênh sẽ tự đóng. Không trả tiền hoặc giao hàng. Nếu đã làm hoặc cần kiểm tra, hãy yêu cầu giữ kênh ngay và liên hệ quản trị viên.",
+    "pending_limit": "Nếu bên kia không xác nhận trong 30 phút, đơn sẽ hết hạn."
   }
 }

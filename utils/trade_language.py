@@ -47,6 +47,8 @@ def participant_notice(row,status=None):
             buyer=key=='buyer_id'
             role=pack['labels'][7 if buyer else 8]
             message=specific.get('buyer' if buyer else 'seller',instruction(status,language))
+            if status in ('completed','cancelled','refunded','test_closed'):
+                message+='\n'+pack['closure_notice']
             lines.append(f'{"🛒" if buyer else "📦"} {role} <@{row[key]}>：{message}')
         sections.append('\n\n'.join(lines))
     return '\n\n'.join(sections)

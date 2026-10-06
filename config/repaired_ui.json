@@ -237,7 +237,14 @@
     "image_alt": "交易发起者提供的物品图片，仅用于展示。请勿按图片中的地址或二维码转账。",
     "image_invalid": "图片无效或不受支持。请重新打开表单，上传静态 JPG、PNG 或 WebP 图片。",
     "image_limits": "图片限 1 张、5 MB、1600 万像素，每边不超过 8192 像素。请重新打开表单重试。",
-    "image_busy": "图片处理繁忙，请稍后重新打开交易表单再试。"
+    "image_busy": "图片处理繁忙，请稍后重新打开交易表单再试。",
+    "cmd_channel_close": "核实后关闭已结案且保留的交易频道",
+    "channel_close_unavailable": "此入口仅支持尚未删除且已保留的交易完成、退款完成或测试结清频道。未结算、付款待核对或争议订单请使用订单核查入口。",
+    "channel_close_pending": "已安排关闭通知，正在发送或等待重试，请勿重复提交。",
+    "channel_close_preview": "订单 {order}\n关闭原因：{reason}\n请先核实保留频道的问题已处理完毕。确认后先通知双方，再重新计时约 5 分钟关闭频道；双方仍可再次申请保留。此操作仅关闭频道，不改判订单，不再次付款、放款或退款。\n请在 5 分钟内点击下方确认。",
+    "channel_close_confirm": "确认关闭频道",
+    "channel_close_saved": "关闭申请已记录。成功通知双方后，才重新计时约 5 分钟关闭频道；通知失败会自动重试，发送成功前频道继续保留。",
+    "channel_close_notice": "管理员已核实并重新安排关闭频道。原因：{reason}\n若无人再次申请保留，频道将在本通知发出约 5 分钟后关闭。请保存交易记录；若仍有问题，请点击「保留频道并通知管理员」。此操作不执行资金转账。"
   },
   "English": {
     "legacy_000": "Select a listing to delete",
@@ -477,7 +484,14 @@
     "image_alt": "Item picture provided by the trade initiator, for display only. Do not pay addresses or QR codes in this picture.",
     "image_invalid": "Invalid or unsupported image. Reopen the form and upload a static JPG, PNG or WebP.",
     "image_limits": "Upload one image up to 5 MB, 16 megapixels and 8192 pixels per side. Reopen the form to retry.",
-    "image_busy": "Image processing is busy. Reopen the trade form and try again shortly."
+    "image_busy": "Image processing is busy. Reopen the trade form and try again shortly.",
+    "cmd_channel_close": "Review and close a retained settled trade channel",
+    "channel_close_unavailable": "Only retained channels of completed, refunded or settled test orders can be closed here. The channel must still exist. This does not handle unresolved payments or disputes.",
+    "channel_close_pending": "A closure notice is already queued. Do not submit again.",
+    "channel_close_preview": "Order {order}\nReason: {reason}\nConfirm only after resolving the request to retain this channel. Both participants will be notified, then a new countdown of about 5 minutes will start. They can request retention again. This closes only the channel; no payment, refund or settlement decision is repeated.\nConfirm below within 5 minutes.",
+    "channel_close_confirm": "Confirm channel closure",
+    "channel_close_saved": "Closure request recorded. Both participants will be notified before the new countdown of about 5 minutes starts. Failed notices will be retried automatically; the channel remains retained until delivery.",
+    "channel_close_notice": "An administrator has reviewed this retained channel and scheduled closure. Reason: {reason}\nUnless retained again, the channel will close in about 5 minutes from this notice. Save your records. If any issue remains, use “Keep channel / Contact admin”. No funds are transferred by this action."
   },
   "日本語": {
     "legacy_000": "削除する募集を選択",
@@ -717,7 +731,14 @@
     "image_alt": "取引開始者が提供した商品画像（展示用）。画像内のアドレスやQRコードには送金しないでください。",
     "image_invalid": "無効または未対応の画像です。フォームを開き直して静止画のJPG、PNG、WebPをアップロードしてください。",
     "image_limits": "画像は1枚、5 MB、1600万画素、各辺8192ピクセルまでです。フォームを開き直してください。",
-    "image_busy": "画像処理が混み合っています。少し待って取引フォームを開き直してください。"
+    "image_busy": "画像処理が混み合っています。少し待って取引フォームを開き直してください。",
+    "cmd_channel_close": "確認後に保留中の決済済み取引チャンネルを閉じる",
+    "channel_close_unavailable": "この操作は保留中で未削除の取引完了・返金完了・テスト精算済みチャンネルのみ対象です。未精算・入金確認待ち・紛争は注文確認で処理してください。",
+    "channel_close_pending": "閉鎖通知はすでに送信待ちです。再送信しないでください。",
+    "channel_close_preview": "注文 {order}\n理由：{reason}\n保留理由が解決済みか確認してください。双方へ通知後、約5分の閉鎖カウントダウンを開始します。再度保留申請できます。チャンネルのみ閉鎖し、注文判断・支払い・送金・返金は繰り返しません。\n5分以内に確認してください。",
+    "channel_close_confirm": "チャンネル閉鎖を確認",
+    "channel_close_saved": "閉鎖申請を記録しました。双方への通知が成功してから約5分のカウントダウンを開始します。通知失敗時は自動再試行し、それまでは保留します。",
+    "channel_close_notice": "管理者が保留理由を確認し、閉鎖を再設定しました。理由：{reason}\n再度保留申請がなければ、この通知から約5分後に閉鎖します。記録を保存してください。問題が残る場合は「チャンネルを保持／管理者に連絡」を選択してください。この操作で送金は行いません。"
   },
   "한국어": {
     "legacy_000": "삭제할 거래 게시물 선택",
@@ -957,7 +978,14 @@
     "image_alt": "거래 개시자가 제공한 상품 사진이며 전시용입니다. 사진 속 주소나 QR 코드로 송금하지 마세요.",
     "image_invalid": "유효하지 않거나 지원하지 않는 이미지입니다. 양식을 다시 열고 정지 JPG, PNG 또는 WebP를 올리세요.",
     "image_limits": "이미지는 1장, 5 MB, 1600만 화소, 각 변 8192픽셀 이하입니다. 양식을 다시 여세요.",
-    "image_busy": "이미지 처리 중입니다. 잠시 후 거래 양식을 다시 열고 시도하세요."
+    "image_busy": "이미지 처리 중입니다. 잠시 후 거래 양식을 다시 열고 시도하세요.",
+    "cmd_channel_close": "확인 후 보존 중인 정산 완료 거래 채널 닫기",
+    "channel_close_unavailable": "이 기능은 삭제되지 않고 보존 중인 거래 완료, 환불 완료 또는 테스트 정산 채널만 지원합니다. 미정산, 입금 검토 또는 분쟁 주문은 주문 검토를 이용하세요.",
+    "channel_close_pending": "닫기 안내가 이미 대기 중입니다. 다시 제출하지 마세요.",
+    "channel_close_preview": "주문 {order}\n사유: {reason}\n채널 보존 사유가 해결되었는지 확인하세요. 양측에 안내한 뒤 약 5분 후 닫습니다. 다시 보존을 요청할 수 있습니다. 채널만 닫으며 주문 판단, 결제, 지급 또는 환불을 반복하지 않습니다.\n5분 이내에 확인하세요.",
+    "channel_close_confirm": "채널 닫기 확인",
+    "channel_close_saved": "닫기 요청이 기록되었습니다. 양측 안내가 성공한 뒤 약 5분을 새로 셉니다. 실패하면 자동 재시도하며 안내 전에는 채널을 보존합니다.",
+    "channel_close_notice": "관리자가 검토 후 채널 닫기를 다시 예약했습니다. 사유: {reason}\n다시 보존 요청이 없으면 이 안내 후 약 5분 뒤 닫힙니다. 기록을 저장하세요. 문제가 남으면 채널 보존 및 관리자 연락 버튼을 누르세요. 이 작업은 송금하지 않습니다."
   },
   "Bahasa Indonesia": {
     "legacy_000": "Pilih penawaran yang akan dihapus",
@@ -1197,7 +1225,14 @@
     "image_alt": "Foto barang dari pembuat transaksi, hanya untuk tampilan. Jangan membayar ke alamat atau kode QR dalam foto ini.",
     "image_invalid": "Gambar tidak valid atau tidak didukung. Buka ulang formulir dan unggah JPG, PNG atau WebP statis.",
     "image_limits": "Unggah satu gambar hingga 5 MB, 16 megapiksel dan 8192 piksel per sisi. Buka ulang formulir.",
-    "image_busy": "Pemrosesan gambar sibuk. Buka ulang formulir transaksi dan coba sebentar lagi."
+    "image_busy": "Pemrosesan gambar sibuk. Buka ulang formulir transaksi dan coba sebentar lagi.",
+    "cmd_channel_close": "Tinjau dan tutup kanal transaksi selesai yang ditahan",
+    "channel_close_unavailable": "Hanya kanal yang masih ada dan ditahan untuk transaksi selesai, pengembalian selesai atau uji terselesaikan. Pembayaran belum selesai atau sengketa harus ditinjau melalui pemeriksaan pesanan.",
+    "channel_close_pending": "Pemberitahuan penutupan sudah dijadwalkan. Jangan kirim ulang.",
+    "channel_close_preview": "Pesanan {order}\nAlasan: {reason}\nPastikan masalah penahanan kanal sudah selesai. Kedua pihak diberi tahu, lalu hitung mundur baru sekitar 5 menit dimulai. Mereka dapat meminta penahanan lagi. Hanya kanal yang ditutup; keputusan, pembayaran, pencairan atau pengembalian tidak diulang.\nKonfirmasi dalam 5 menit.",
+    "channel_close_confirm": "Konfirmasi penutupan kanal",
+    "channel_close_saved": "Permintaan penutupan dicatat. Hitung mundur baru sekitar 5 menit dimulai setelah kedua pihak diberi tahu. Pemberitahuan gagal dicoba ulang otomatis; kanal tetap ditahan sampai terkirim.",
+    "channel_close_notice": "Administrator telah meninjau dan menjadwalkan penutupan kembali. Alasan: {reason}\nJika tidak ditahan lagi, kanal ditutup sekitar 5 menit setelah pemberitahuan ini. Simpan catatan. Jika masih ada masalah, gunakan tombol tahan kanal/hubungi admin. Tindakan ini tidak mentransfer dana."
   },
   "Bahasa Melayu": {
     "legacy_000": "Pilih iklan untuk dipadam",
@@ -1437,7 +1472,14 @@
     "image_alt": "Gambar barang daripada pemula transaksi, untuk paparan sahaja. Jangan bayar ke alamat atau kod QR dalam gambar ini.",
     "image_invalid": "Gambar tidak sah atau tidak disokong. Buka semula borang dan muat naik JPG, PNG atau WebP statik.",
     "image_limits": "Muat naik satu gambar sehingga 5 MB, 16 megapiksel dan 8192 piksel setiap sisi. Buka semula borang.",
-    "image_busy": "Pemprosesan gambar sibuk. Buka semula borang transaksi dan cuba sebentar lagi."
+    "image_busy": "Pemprosesan gambar sibuk. Buka semula borang transaksi dan cuba sebentar lagi.",
+    "cmd_channel_close": "Semak dan tutup saluran transaksi selesai yang dikekalkan",
+    "channel_close_unavailable": "Hanya saluran yang masih ada dan dikekalkan untuk transaksi selesai, bayaran balik selesai atau ujian selesai. Bayaran belum selesai atau pertikaian perlu melalui semakan pesanan.",
+    "channel_close_pending": "Notis penutupan sudah dijadualkan. Jangan hantar semula.",
+    "channel_close_preview": "Pesanan {order}\nSebab: {reason}\nPastikan isu pengekalan saluran telah selesai. Kedua-dua pihak dimaklumkan, kemudian kira detik baharu sekitar 5 minit bermula. Mereka boleh meminta pengekalan semula. Hanya saluran ditutup; keputusan, pembayaran, pengeluaran atau bayaran balik tidak diulang.\nSahkan dalam 5 minit.",
+    "channel_close_confirm": "Sahkan penutupan saluran",
+    "channel_close_saved": "Permintaan penutupan direkodkan. Kira detik baharu sekitar 5 minit bermula selepas kedua-dua pihak dimaklumkan. Notis gagal dicuba semula secara automatik; saluran kekal sehingga notis dihantar.",
+    "channel_close_notice": "Pentadbir telah menyemak dan menjadualkan penutupan semula. Sebab: {reason}\nJika tiada permintaan pengekalan lagi, saluran ditutup sekitar 5 minit selepas notis ini. Simpan rekod. Jika masih ada isu, gunakan butang kekalkan saluran/hubungi pentadbir. Tindakan ini tidak memindahkan dana."
   },
   "Tagalog": {
     "legacy_000": "Piliin ang listing na buburahin",
@@ -1677,7 +1719,14 @@
     "image_alt": "Larawan ng item mula sa nagsimula ng trade, para sa pagpapakita lang. Huwag magbayad sa address o QR code sa larawang ito.",
     "image_invalid": "Hindi valid o hindi suportado ang larawan. Buksan muli ang form at mag-upload ng static na JPG, PNG o WebP.",
     "image_limits": "Isang larawan lang na hanggang 5 MB, 16 megapixel at 8192 pixel bawat gilid. Buksan muli ang form.",
-    "image_busy": "Abala ang pagproseso ng larawan. Buksan muli ang trade form at subukan mamaya."
+    "image_busy": "Abala ang pagproseso ng larawan. Buksan muli ang trade form at subukan mamaya.",
+    "cmd_channel_close": "Suriin at isara ang pinanatiling kanal ng natapos na trade",
+    "channel_close_unavailable": "Para lang ito sa umiiral at pinanatiling kanal ng natapos, na-refund o naayos na test order. Gamitin ang pagsusuri ng order para sa hindi pa naayos na bayad o alitan.",
+    "channel_close_pending": "Nakapila na ang abiso ng pagsasara. Huwag isumite muli.",
+    "channel_close_preview": "Order {order}\nDahilan: {reason}\nTiyaking naayos na ang dahilan ng pagpapanatili ng kanal. Aabisuhan ang magkabilang panig bago magsimula ang bagong mga 5 minutong countdown. Maaari silang humiling na panatilihin itong muli. Kanal lang ang isasara; walang pag-ulit ng desisyon, bayad, payout o refund.\nKumpirmahin sa loob ng 5 minuto.",
+    "channel_close_confirm": "Kumpirmahin ang pagsasara",
+    "channel_close_saved": "Naitala ang hiling ng pagsasara. Magsisimula ang bagong mga 5 minutong countdown matapos maabisuhan ang dalawang panig. Awtomatikong uulitin ang nabigong abiso; mananatili ang kanal hanggang maipadala ito.",
+    "channel_close_notice": "Sinuri ng admin at muling itinakda ang pagsasara. Dahilan: {reason}\nKung walang bagong hiling na panatilihin, magsasara ang kanal mga 5 minuto mula sa abisong ito. I-save ang mga tala. Kung may problema pa, gamitin ang panatilihin ang kanal/kontakin ang admin. Walang perang inililipat sa aksyong ito."
   },
   "Português": {
     "legacy_000": "Selecione um anúncio para excluir",
@@ -1917,7 +1966,14 @@
     "image_alt": "Foto do item fornecida pelo iniciador, apenas para exibição. Não pague para endereços ou códigos QR nesta foto.",
     "image_invalid": "Imagem inválida ou incompatível. Reabra o formulário e envie um JPG, PNG ou WebP estático.",
     "image_limits": "Envie uma imagem de até 5 MB, 16 megapixels e 8192 pixels por lado. Reabra o formulário.",
-    "image_busy": "O processamento de imagens está ocupado. Reabra o formulário e tente em instantes."
+    "image_busy": "O processamento de imagens está ocupado. Reabra o formulário e tente em instantes.",
+    "cmd_channel_close": "Revisar e fechar canal retido de negociação concluída",
+    "channel_close_unavailable": "Somente canais existentes e retidos de pedidos concluídos, reembolsados ou testes encerrados. Pagamentos pendentes e disputas exigem revisão do pedido.",
+    "channel_close_pending": "O aviso de encerramento já está na fila. Não envie novamente.",
+    "channel_close_preview": "Pedido {order}\nMotivo: {reason}\nVerifique se o problema que motivou a retenção foi resolvido. Ambas as partes serão avisadas e começará uma nova contagem de cerca de 5 minutos. Podem pedir retenção novamente. Apenas o canal será fechado; decisões, pagamentos e reembolsos não serão repetidos.\nConfirme em até 5 minutos.",
+    "channel_close_confirm": "Confirmar fechamento do canal",
+    "channel_close_saved": "Pedido de fechamento registrado. A nova contagem de cerca de 5 minutos começa após avisar ambas as partes. Avisos com falha serão repetidos automaticamente; o canal permanece retido até o envio.",
+    "channel_close_notice": "Um administrador revisou e reagendou o fechamento. Motivo: {reason}\nSem novo pedido de retenção, o canal será fechado cerca de 5 minutos após este aviso. Salve os registros. Se houver problema, use manter canal/contatar administrador. Esta ação não transfere fundos."
   },
   "Español": {
     "legacy_000": "Selecciona un anuncio para eliminar",
@@ -2157,7 +2213,14 @@
     "image_alt": "Foto del artículo aportada por quien inició la operación, solo para mostrarlo. No pagues a direcciones ni códigos QR de esta foto.",
     "image_invalid": "Imagen inválida o no compatible. Abre de nuevo el formulario y sube un JPG, PNG o WebP estático.",
     "image_limits": "Sube una imagen de hasta 5 MB, 16 megapíxeles y 8192 píxeles por lado. Abre de nuevo el formulario.",
-    "image_busy": "El procesamiento de imágenes está ocupado. Abre de nuevo el formulario e inténtalo en breve."
+    "image_busy": "El procesamiento de imágenes está ocupado. Abre de nuevo el formulario e inténtalo en breve.",
+    "cmd_channel_close": "Revisar y cerrar un canal conservado de operación finalizada",
+    "channel_close_unavailable": "Solo canales existentes y conservados de operaciones completadas, reembolsadas o pruebas liquidadas. Los pagos pendientes y disputas requieren revisar el pedido.",
+    "channel_close_pending": "El aviso de cierre ya está pendiente. No vuelvas a enviarlo.",
+    "channel_close_preview": "Pedido {order}\nMotivo: {reason}\nComprueba que se resolvió el motivo de conservar el canal. Se avisará a ambas partes y empezará una nueva cuenta de unos 5 minutos. Pueden solicitar conservarlo de nuevo. Solo se cierra el canal; no se repiten decisiones, pagos ni reembolsos.\nConfirma en 5 minutos.",
+    "channel_close_confirm": "Confirmar cierre del canal",
+    "channel_close_saved": "Solicitud de cierre registrada. La nueva cuenta de unos 5 minutos empieza tras avisar a ambas partes. Los avisos fallidos se reintentarán; el canal seguirá conservado hasta enviarlos.",
+    "channel_close_notice": "Un administrador revisó y programó de nuevo el cierre. Motivo: {reason}\nSin una nueva solicitud de conservación, el canal se cerrará unos 5 minutos después de este aviso. Guarda los registros. Si quedan problemas, usa conservar canal/contactar administrador. Esta acción no transfiere fondos."
   },
   "ภาษาไทย": {
     "legacy_000": "เลือกรายการประกาศที่จะลบ",
@@ -2397,7 +2460,14 @@
     "image_alt": "รูปสินค้าจากผู้เริ่มการซื้อขาย ใช้แสดงสินค้าเท่านั้น อย่าโอนเงินตามที่อยู่หรือรหัส QR ในรูปนี้",
     "image_invalid": "รูปไม่ถูกต้องหรือไม่รองรับ เปิดแบบฟอร์มใหม่และอัปโหลดรูปนิ่ง JPG, PNG หรือ WebP",
     "image_limits": "อัปโหลด 1 รูป ไม่เกิน 5 MB, 16 ล้านพิกเซล และด้านละ 8192 พิกเซล เปิดแบบฟอร์มใหม่",
-    "image_busy": "ระบบรูปภาพกำลังทำงาน เปิดแบบฟอร์มซื้อขายใหม่แล้วลองอีกครั้งในภายหลัง"
+    "image_busy": "ระบบรูปภาพกำลังทำงาน เปิดแบบฟอร์มซื้อขายใหม่แล้วลองอีกครั้งในภายหลัง",
+    "cmd_channel_close": "ตรวจสอบและปิดช่องซื้อขายที่จบแล้วและถูกเก็บไว้",
+    "channel_close_unavailable": "ใช้ได้เฉพาะช่องที่ยังอยู่และถูกเก็บไว้ของรายการที่เสร็จสิ้น คืนเงินแล้ว หรือปิดรายการทดสอบ ปัญหาการชำระเงินหรือข้อพิพาทต้องตรวจสอบคำสั่งซื้อ",
+    "channel_close_pending": "แจ้งปิดช่องอยู่ในคิวแล้ว อย่าส่งซ้ำ",
+    "channel_close_preview": "คำสั่งซื้อ {order}\nเหตุผล: {reason}\nตรวจสอบว่าปัญหาที่ขอเก็บช่องได้รับการแก้ไขแล้ว ระบบจะแจ้งทั้งสองฝ่ายก่อนเริ่มนับใหม่ประมาณ 5 นาที ทั้งสองฝ่ายยังขอเก็บช่องอีกครั้งได้ ปิดเฉพาะช่อง ไม่ตัดสินใหม่หรือจ่ายเงิน คืนเงินซ้ำ\nยืนยันภายใน 5 นาที",
+    "channel_close_confirm": "ยืนยันปิดช่อง",
+    "channel_close_saved": "บันทึกคำขอปิดแล้ว จะเริ่มนับใหม่ประมาณ 5 นาทีหลังแจ้งทั้งสองฝ่ายสำเร็จ หากแจ้งไม่สำเร็จจะลองใหม่อัตโนมัติ และยังเก็บช่องไว้จนกว่าจะส่งสำเร็จ",
+    "channel_close_notice": "ผู้ดูแลตรวจสอบและกำหนดปิดช่องใหม่แล้ว เหตุผล: {reason}\nหากไม่มีคำขอเก็บช่องอีกครั้ง ช่องจะปิดประมาณ 5 นาทีหลังแจ้งนี้ โปรดบันทึกประวัติ หากยังมีปัญหาให้กดเก็บช่อง/ติดต่อผู้ดูแล การดำเนินการนี้ไม่โอนเงิน"
   },
   "Tiếng Việt": {
     "legacy_000": "Chọn tin đăng cần xóa",
@@ -2637,6 +2707,13 @@
     "image_alt": "Ảnh hàng do người tạo giao dịch cung cấp, chỉ để trưng bày. Không chuyển tiền đến địa chỉ hoặc mã QR trong ảnh này.",
     "image_invalid": "Ảnh không hợp lệ hoặc không hỗ trợ. Mở lại biểu mẫu và tải ảnh tĩnh JPG, PNG hoặc WebP.",
     "image_limits": "Tải 1 ảnh tối đa 5 MB, 16 triệu điểm ảnh và 8192 điểm ảnh mỗi cạnh. Mở lại biểu mẫu.",
-    "image_busy": "Đang bận xử lý ảnh. Mở lại biểu mẫu giao dịch và thử sau ít phút."
+    "image_busy": "Đang bận xử lý ảnh. Mở lại biểu mẫu giao dịch và thử sau ít phút.",
+    "cmd_channel_close": "Kiểm tra và đóng kênh giao dịch đã kết thúc đang được giữ",
+    "channel_close_unavailable": "Chỉ áp dụng cho kênh còn tồn tại và đang được giữ của đơn đã hoàn tất, hoàn tiền hoặc kết toán thử nghiệm. Thanh toán chưa xử lý và tranh chấp cần kiểm tra đơn hàng.",
+    "channel_close_pending": "Thông báo đóng kênh đã được xếp hàng. Không gửi lại.",
+    "channel_close_preview": "Đơn {order}\nLý do: {reason}\nXác minh vấn đề yêu cầu giữ kênh đã được giải quyết. Hệ thống thông báo hai bên rồi bắt đầu đếm lại khoảng 5 phút. Hai bên vẫn có thể yêu cầu giữ kênh. Chỉ đóng kênh, không quyết định lại hoặc thanh toán, chi trả, hoàn tiền lần nữa.\nXác nhận trong 5 phút.",
+    "channel_close_confirm": "Xác nhận đóng kênh",
+    "channel_close_saved": "Đã ghi nhận yêu cầu đóng kênh. Thời gian khoảng 5 phút bắt đầu sau khi thông báo hai bên thành công. Thông báo lỗi sẽ tự thử lại; kênh vẫn được giữ đến khi gửi thành công.",
+    "channel_close_notice": "Quản trị viên đã kiểm tra và lên lịch đóng lại. Lý do: {reason}\nNếu không có yêu cầu giữ lại, kênh sẽ đóng khoảng 5 phút sau thông báo này. Hãy lưu hồ sơ. Nếu vẫn có vấn đề, dùng nút giữ kênh/liên hệ quản trị viên. Thao tác này không chuyển tiền."
   }
 }
